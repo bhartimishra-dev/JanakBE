@@ -134,7 +134,10 @@ export class CartService {
       : 0;
     const shippingAmount = subtotal >= 50000 ? 0 : 500;
     const totalAmount = subtotal + gstAmount - discountAmount + shippingAmount;
-    return { subtotal, gstAmount, discountAmount, shippingAmount, totalAmount };
+    const ADVANCE_CAP = 50000;
+    const advanceAmount = Math.min(Math.round(totalAmount * 0.1 * 100) / 100, ADVANCE_CAP);
+    const balanceAmount = Math.round((totalAmount - advanceAmount) * 100) / 100;
+    return { subtotal, gstAmount, discountAmount, shippingAmount, totalAmount, advanceAmount, balanceAmount };
   }
 
   async getCart(user: User) {
