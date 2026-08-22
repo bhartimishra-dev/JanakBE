@@ -86,11 +86,12 @@ export class PaymentsService {
   }
 
   async handleCallback(payload: Record<string, any>) {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL')?.split(',')[0]?.trim() ?? 'http://localhost:3000';
     const { merchantTxnNo } = payload;
 
     if (!merchantTxnNo) {
       this.logger.warn('Callback received without merchantTxnNo');
-      return { success: false };
+      return { success: false, redirectUrl: `${frontendUrl}/payment/failed` };
     }
 
     const txn = await this.txnRepository.findOne({
@@ -100,7 +101,7 @@ export class PaymentsService {
 
     if (!txn) {
       this.logger.error(`Transaction not found for merchantTxnNo: ${merchantTxnNo}`);
-      return { success: false };
+      return { success: false, redirectUrl: `${frontendUrl}/payment/failed` };
     }
 
     const isSuccess =
@@ -139,7 +140,12 @@ export class PaymentsService {
       `Callback processed — txn: ${merchantTxnNo}, status: ${txn.status}`,
     );
 
-    return { success: isSuccess };
+    const orderId = txn.order.orderId;
+    const redirectUrl = isSuccess
+      ? `${frontendUrl}/payment/callback?status=success&orderId=${orderId}&txnId=${payload.txnID ?? ''}`
+      : `${frontendUrl}/payment/callback?status=failed&orderId=${orderId}&code=${payload.txnResponseCode ?? ''}`;
+
+    return { success: isSuccess, redirectUrl };
   }
 
   async confirmNeftAdvance(orderId: string, neftRef: string, adminUser: User) {

@@ -4,10 +4,12 @@ import {
   Get,
   Param,
   Post,
+  Res,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { User } from '../users/entities/user.entity';
@@ -33,8 +35,13 @@ export class PaymentsController {
   @Public()
   @UsePipes(new ValidationPipe({ whitelist: false }))
   @ApiOperation({ summary: 'ICICI payment callback — called by gateway after payment' })
-  handleCallback(@Body() payload: Record<string, any>) {
-    return this.paymentsService.handleCallback(payload);
+  async handleCallback(
+    @Body() payload: Record<string, any>,
+    @Res() res: Response,
+  ) {
+    const result = await this.paymentsService.handleCallback(payload);
+    const frontendUrl = result.redirectUrl;
+    return res.redirect(302, frontendUrl);
   }
 
   @Get('status/:merchantTxnNo')
