@@ -57,9 +57,12 @@ export class PaymentsService {
         addlParam2: dto.addlParam2,
       }));
     } catch (err) {
+      this.logger.error(`ICICI initiate failed — ${JSON.stringify(err.response?.data ?? err.message)}`);
       const iciciMsg = err.response?.data?.errorMsg ?? err.message;
       throw new BadRequestException(`Payment gateway error: ${iciciMsg}`);
     }
+
+    this.logger.log(`ICICI response — code: ${response.responseCode}, tranCtx: ${response.tranCtx}, redirectURI: ${response.redirectURI}`);
 
     const txn = this.txnRepository.create({
       merchantTxnNo,
