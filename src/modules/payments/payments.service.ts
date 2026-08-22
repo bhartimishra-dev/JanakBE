@@ -89,6 +89,7 @@ export class PaymentsService {
   }
 
   async handleCallback(payload: Record<string, any>) {
+    this.logger.log(`Callback received — payload: ${JSON.stringify(payload)}`);
     const frontendUrl = this.configService.get<string>('FRONTEND_URL')?.split(',')[0]?.trim() ?? 'http://localhost:3000';
     const { merchantTxnNo } = payload;
 
