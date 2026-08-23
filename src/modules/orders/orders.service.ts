@@ -30,8 +30,13 @@ export class OrdersService {
   }
 
   async findOne(id: string, userId: string) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const where: any = isUuid
+      ? { id, user: { id: userId } }
+      : { orderId: id, user: { id: userId } };
+
     const order = await this.ordersRepository.findOne({
-      where: { id, user: { id: userId } },
+      where,
       relations: { items: { product: { images: true } }, tracking: true },
     });
     if (!order) throw new NotFoundException('Order not found');
