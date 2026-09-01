@@ -40,6 +40,10 @@ services:
       DB_HOST: postgres
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # TEMPORARY: lets TypeORM add today's new columns on startup. Remove this
+      # line once the deploy has run once successfully — see docs/admin-api-integration.md
+      # note on schema sync, or just ask to have it reverted.
+      DB_SYNCHRONIZE: "true"
     ports:
       - "3000:3000"
     volumes:

@@ -45,7 +45,11 @@ import { RedisModule } from './common/services/redis.module';
         password: config.get('database.password'),
         database: config.get('database.name'),
         autoLoadEntities: true,
-        synchronize: process.env.NODE_ENV !== 'production',
+        // Auto-sync in non-production, or when explicitly opted into for a one-off
+        // production schema catch-up (DB_SYNCHRONIZE=true) — kept separate from
+        // NODE_ENV so toggling it doesn't also shift the Redis key prefix used
+        // for sessions/token blacklisting (see auth.service.ts / jwt.strategy.ts).
+        synchronize: process.env.DB_SYNCHRONIZE === 'true' || process.env.NODE_ENV !== 'production',
       }),
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 60 }]),
