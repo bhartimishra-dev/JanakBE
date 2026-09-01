@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { calculateCouponDiscount } from '../../common/utils/coupon-discount.util';
 import { calculateGst } from '../../common/utils/gst.util';
 import { generateOrderId } from '../../common/utils/order-id.util';
 import { OrderStatus } from '../../common/enums/order-status.enum';
@@ -68,17 +69,26 @@ export class CheckoutService {
     if (dto.couponCode) {
       coupon = await this.couponRepository.findOne({
         where: { code: dto.couponCode.toUpperCase(), isActive: true },
+        relations: { user: true },
       });
+      if (!coupon) throw new BadRequestException('Invalid or expired coupon');
+      if (coupon.expiresAt && coupon.expiresAt < new Date()) {
+        throw new BadRequestException('Coupon has expired');
+      }
+      if (coupon.user && coupon.user.id !== user.id) {
+        throw new BadRequestException('This coupon is not valid for your account');
+      }
     }
 
     const subtotal = cart.items.reduce(
       (sum, item) => sum + Number(item.product.price) * item.quantity,
       0,
     );
+    if (coupon?.minimumOrderValue != null && subtotal < Number(coupon.minimumOrderValue)) {
+      throw new BadRequestException(`Minimum order value of ₹${coupon.minimumOrderValue} required for this coupon`);
+    }
     const { gstAmount } = calculateGst(subtotal);
-    const discountAmount = coupon
-      ? Math.round(subtotal * (Number(coupon.discountPercent) / 100))
-      : 0;
+    const discountAmount = calculateCouponDiscount(coupon, subtotal);
     const shippingAmount = subtotal >= 50000 ? 0 : 500;
     const totalAmount = subtotal + gstAmount - discountAmount + shippingAmount;
 

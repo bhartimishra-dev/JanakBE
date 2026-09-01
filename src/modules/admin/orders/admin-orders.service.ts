@@ -1,13 +1,63 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Between, ILike, In, Not, Repository } from 'typeorm';
 import { OrderStatus } from '../../../common/enums/order-status.enum';
 import { OrderTracking } from '../../orders/entities/order-tracking.entity';
 import { Order } from '../../orders/entities/order.entity';
 import { User } from '../../users/entities/user.entity';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { NotificationType } from '../../notifications/entities/notification.entity';
+
+const ONGOING_STATUSES: OrderStatus[] = [
+  OrderStatus.PENDING,
+  OrderStatus.PENDING_ADVANCE_PAYMENT,
+  OrderStatus.ADVANCE_PAID,
+  OrderStatus.PROCESSING,
+  OrderStatus.ASSIGNED_FOR_SHIPPING,
+  OrderStatus.PENDING_BALANCE_PAYMENT,
+  OrderStatus.BALANCE_PAID,
+  OrderStatus.CONFIRMED,
+  OrderStatus.SHIPPED,
+  OrderStatus.OUT_FOR_DELIVERY,
+];
+
+const COMPLETED_STATUSES: OrderStatus[] = [
+  OrderStatus.DELIVERED,
+  OrderStatus.CANCELLED,
+];
+
+export interface AdminOrderListItem {
+  id: string;
+  orderId: string;
+  customerName: string;
+  customerEmail: string;
+  customerContact: string;
+  bookingAmount: number;
+  orderStatus: OrderStatus;
+  paymentStatus: { advancePaid: boolean; balancePaid: boolean };
+  deliveryAddress: string;
+  totalAmount: number;
+  createdAt: Date;
+  items?: AdminOrderLineItem[];
+}
+
+export interface AdminOrderLineItem {
+  id: string;
+  productName: string;
+  productImage: string | null;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
+export interface PaginatedOrders {
+  orders: AdminOrderListItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
 
 @Injectable()
 export class AdminOrdersService {
@@ -20,21 +70,100 @@ export class AdminOrdersService {
     private configService: ConfigService,
   ) {}
 
-  findAll(status?: OrderStatus, userId?: string) {
-    const where: any = {};
-    if (status) where.status = status;
-    if (userId) where.user = { id: userId };
-    return this.ordersRepository.find({
-      where,
-      relations: { user: true, items: { product: true }, tracking: true },
-      order: { createdAt: 'DESC' },
-    });
+  async findAll(
+    tab: 'ongoing' | 'completed' = 'ongoing',
+    page = 1,
+    limit = 20,
+    search?: string,
+    from?: string,
+    to?: string,
+    status?: OrderStatus,
+  ): Promise<PaginatedOrders> {
+    const qb = this.ordersRepository
+      .createQueryBuilder('o')
+      .leftJoinAndSelect('o.user', 'u')
+      .leftJoinAndSelect('o.items', 'i')
+      .leftJoinAndSelect('i.product', 'p')
+      .leftJoinAndSelect('p.images', 'img')
+      .leftJoinAndSelect('o.tracking', 't')
+      .orderBy('o.createdAt', 'DESC');
+
+    // Tab filter
+    if (status) {
+      qb.andWhere('o.status = :status', { status });
+    } else if (tab === 'completed') {
+      qb.andWhere('o.status IN (:...statuses)', { statuses: COMPLETED_STATUSES });
+    } else {
+      qb.andWhere('o.status IN (:...statuses)', { statuses: ONGOING_STATUSES });
+    }
+
+    // Search by orderId
+    if (search) {
+      qb.andWhere('LOWER(o.orderId) LIKE LOWER(:search)', { search: `%${search}%` });
+    }
+
+    // Date range
+    if (from) {
+      const start = new Date(from);
+      start.setHours(0, 0, 0, 0);
+      qb.andWhere('o.createdAt >= :from', { from: start });
+    }
+    if (to) {
+      const end = new Date(to);
+      end.setHours(23, 59, 59, 999);
+      qb.andWhere('o.createdAt <= :to', { to: end });
+    }
+
+    const [orders, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      orders: orders.map((o) => this.toListItem(o)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  private toListItem(o: Order): AdminOrderListItem {
+    const addr = o.shippingAddress ?? {};
+    const deliveryAddress = [addr['addressLine1'], addr['city'], addr['state'], addr['pincode']]
+      .filter(Boolean)
+      .join(', ');
+
+    return {
+      id: o.id,
+      orderId: o.orderId,
+      customerName: (o.user as any)?.name ?? (o.user as any)?.email ?? 'Unknown',
+      customerEmail: (o.user as any)?.email ?? '',
+      customerContact: addr['phone'] ?? addr['mobile'] ?? '',
+      bookingAmount: Number(o.advanceAmount),
+      orderStatus: o.status,
+      paymentStatus: { advancePaid: o.advancePaid, balancePaid: o.balancePaid },
+      deliveryAddress,
+      totalAmount: Number(o.totalAmount),
+      createdAt: o.createdAt,
+      items: (o.items ?? []).map((i) => ({
+        id: i.id,
+        productName: i.productName,
+        productImage: (i.product as any)?.images?.[0]?.url ?? null,
+        quantity: i.quantity,
+        unitPrice: Number(i.unitPrice),
+        totalPrice: Number(i.totalPrice),
+      })),
+    };
   }
 
   async findOne(id: string) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const where: any = isUuid ? { id } : { orderId: id };
+
     const order = await this.ordersRepository.findOne({
-      where: { id },
-      relations: { user: true, items: { product: true }, tracking: true },
+      where,
+      relations: { user: true, items: { product: { images: true } }, tracking: true },
     });
     if (!order) throw new NotFoundException('Order not found');
     return order;

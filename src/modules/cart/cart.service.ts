@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { calculateCouponDiscount } from '../../common/utils/coupon-discount.util';
 import { calculateGst } from '../../common/utils/gst.util';
 import { Product } from '../products/entities/product.entity';
 import { User } from '../users/entities/user.entity';
@@ -129,9 +130,7 @@ export class CartService {
       0,
     );
     const { gstAmount } = calculateGst(subtotal);
-    const discountAmount = coupon
-      ? Math.round(subtotal * (Number(coupon.discountPercent) / 100))
-      : 0;
+    const discountAmount = calculateCouponDiscount(coupon, subtotal);
     const shippingAmount = subtotal >= 50000 ? 0 : 500;
     const totalAmount = subtotal + gstAmount - discountAmount + shippingAmount;
     const ADVANCE_CAP = 50000;
@@ -187,13 +186,31 @@ export class CartService {
   async applyCoupon(user: User, code: string) {
     const coupon = await this.couponRepository.findOne({
       where: { code: code.toUpperCase(), isActive: true },
+      relations: { user: true },
     });
     if (!coupon) throw new BadRequestException('Invalid or expired coupon');
     if (coupon.expiresAt && coupon.expiresAt < new Date()) {
       throw new BadRequestException('Coupon has expired');
     }
+    if (coupon.user && coupon.user.id !== user.id) {
+      throw new BadRequestException('This coupon is not valid for your account');
+    }
     const cart = await this.getOrCreateCart(user);
-    return { ...this.buildSummary(cart, coupon), coupon: { code: coupon.code, discountPercent: coupon.discountPercent } };
+    const subtotal = cart.items.reduce((sum, item) => sum + Number(item.product.price) * item.quantity, 0);
+    if (coupon.minimumOrderValue != null && subtotal < Number(coupon.minimumOrderValue)) {
+      throw new BadRequestException(`Minimum order value of ₹${coupon.minimumOrderValue} required for this coupon`);
+    }
+    return {
+      ...this.buildSummary(cart, coupon),
+      coupon: {
+        code: coupon.code,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        discountPercent: coupon.discountPercent,
+        maxDiscountAmount: coupon.maxDiscountAmount,
+        additionalDiscountType: coupon.additionalDiscountType,
+      },
+    };
   }
 
   async saveForLater(user: User, itemId: string) {

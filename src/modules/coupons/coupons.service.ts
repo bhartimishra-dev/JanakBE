@@ -51,7 +51,10 @@ export class CouponsService {
     }
     return {
       code: coupon.code,
+      discountType: coupon.discountType,
+      discountValue: coupon.discountValue,
       discountPercent: coupon.discountPercent,
+      minimumOrderValue: coupon.minimumOrderValue,
     };
   }
 }

@@ -21,14 +21,26 @@ export class Product {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ unique: true, nullable: true })
+  productCode: string;
+
   @Column()
   name: string;
 
   @Column({ unique: true })
   slug: string;
 
+  @Column({ nullable: true, length: 150 })
+  headline: string;
+
   @Column({ type: 'text', nullable: true })
   description: string;
+
+  @Column({ type: 'text', nullable: true })
+  keySpecification: string;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  originalPrice: number;
 
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   price: number;
@@ -58,7 +70,13 @@ export class Product {
   @Column({ default: true })
   isActive: boolean;
 
-  @ManyToOne(() => Category)
+  @Column({ default: true })
+  showOnWebsite: boolean;
+
+  @Column({ default: false })
+  showOnApp: boolean;
+
+  @ManyToOne(() => Category, (category) => category.products)
   @JoinColumn()
   category: Category;
 

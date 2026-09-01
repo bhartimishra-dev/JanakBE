@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { RolesGuard } from '../../../common/guards/roles.guard';
@@ -29,7 +29,10 @@ export class AdminCouponsController {
           {
             id: 'uuid',
             code: 'SAVE10',
-            discountPercent: '10.00',
+            discountType: 'percentage',
+            discountValue: '10.00',
+            minimumOrderValue: null,
+            isPublic: true,
             isActive: true,
             expiresAt: null,
             createdAt: '2026-06-16T09:00:00.000Z',
@@ -43,6 +46,17 @@ export class AdminCouponsController {
   })
   findAll() {
     return this.adminCouponsService.findAll();
+  }
+
+  @Get('suggest-code')
+  @ApiOperation({
+    summary: 'Suggest a coupon code for a quote-linked coupon',
+    description:
+      'Generates a Jnk-<CUSTOMER>-<digits> style code from the quote\'s customer. Not persisted — call again for a fresh suggestion (the "Regenerate" action).',
+  })
+  @ApiQuery({ name: 'quoteId', required: true })
+  suggestCode(@Query('quoteId') quoteId: string) {
+    return this.adminCouponsService.suggestCode(quoteId);
   }
 
   @Post()
@@ -60,7 +74,10 @@ export class AdminCouponsController {
         data: {
           id: 'uuid',
           code: 'SAVE10',
-          discountPercent: 10,
+          discountType: 'percentage',
+          discountValue: 10,
+          minimumOrderValue: null,
+          isPublic: true,
           isActive: true,
           expiresAt: '2026-12-31T23:59:59.000Z',
           createdAt: '2026-06-16T09:00:00.000Z',
@@ -79,7 +96,7 @@ export class AdminCouponsController {
   @Patch(':id')
   @ApiOperation({
     summary: 'Edit a coupon',
-    description: 'Update discount percentage, expiry date, or active status of a coupon.',
+    description: 'Update discount type/value, expiry date, minimum order value, or active status of a coupon.',
   })
   @ApiResponse({
     status: 200,
@@ -90,7 +107,12 @@ export class AdminCouponsController {
         data: {
           id: 'uuid',
           code: 'SAVE10',
-          discountPercent: 15,
+          discountType: 'percentage',
+          discountValue: 15,
+          maxDiscountAmount: null,
+          additionalDiscountType: null,
+          minimumOrderValue: null,
+          isPublic: true,
           isActive: true,
           expiresAt: null,
           createdAt: '2026-06-16T09:00:00.000Z',

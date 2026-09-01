@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, DefaultValuePipe, Get, Param, ParseIntPipe, Patch, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
@@ -38,16 +38,28 @@ export class AdminOrdersController {
   constructor(private adminOrdersService: AdminOrdersService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all customer orders (admin)' })
+  @ApiOperation({ summary: 'List orders — ongoing or completed, with search and date filters' })
+  @ApiQuery({ name: 'tab', enum: ['ongoing', 'completed'], required: false })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, description: 'Search by order ID' })
+  @ApiQuery({ name: 'from', required: false, description: 'Start date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'to', required: false, description: 'End date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'status', enum: OrderStatus, required: false, description: 'Filter by specific status' })
   findAll(
+    @Query('tab') tab: 'ongoing' | 'completed' = 'ongoing',
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
     @Query('status') status?: OrderStatus,
-    @Query('userId') userId?: string,
   ) {
-    return this.adminOrdersService.findAll(status, userId);
+    return this.adminOrdersService.findAll(tab, page, limit, search, from, to, status);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get order detail (admin)' })
+  @ApiOperation({ summary: 'Get order detail by UUID or orderId (e.g. JP-2026-00001)' })
   findOne(@Param('id') id: string) {
     return this.adminOrdersService.findOne(id);
   }
