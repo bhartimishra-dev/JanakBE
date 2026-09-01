@@ -29,11 +29,14 @@ async function bootstrap() {
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       const isDev = process.env.NODE_ENV === 'development';
-      const isLocalhost = origin && /^https?:\/\/localhost(:\d+)?$/.test(origin);
+      const isLocalhost = origin && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
       if (!origin || allowedOrigins.includes(origin) || (isDev && isLocalhost)) {
         callback(null, true);
       } else {
-        callback(new Error(`CORS: origin ${origin} not allowed`));
+        // Reject cleanly (no CORS headers, no thrown error) rather than surfacing
+        // a 500 — the browser blocks it either way, but this avoids masking real
+        // server errors as CORS rejections and keeps them out of error tracking.
+        callback(null, false);
       }
     },
     credentials: true,
