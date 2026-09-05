@@ -1,5 +1,6 @@
-import { Body, Controller, DefaultValuePipe, Get, Param, ParseIntPipe, Patch, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, DefaultValuePipe, Get, Param, ParseIntPipe, Patch, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
@@ -58,10 +59,48 @@ export class AdminOrdersController {
     return this.adminOrdersService.findAll(tab, page, limit, search, from, to, status);
   }
 
+  @Get('export/excel')
+  @ApiOperation({
+    summary: 'Download orders as an Excel file',
+    description: 'Same filters as the list endpoint (tab/search/status/date range) — exports every matching row, not just the current page.',
+  })
+  @ApiQuery({ name: 'tab', enum: ['ongoing', 'completed'], required: false })
+  @ApiQuery({ name: 'search', required: false, description: 'Search by order ID' })
+  @ApiQuery({ name: 'from', required: false, description: 'Start date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'to', required: false, description: 'End date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'status', enum: OrderStatus, required: false, description: 'Filter by specific status' })
+  async exportExcel(
+    @Res() res: Response,
+    @Query('tab') tab: 'ongoing' | 'completed' = 'ongoing',
+    @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('status') status?: OrderStatus,
+  ) {
+    const buffer = await this.adminOrdersService.exportExcel(tab, search, from, to, status);
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="orders-${stamp}.xlsx"`,
+    });
+    res.send(buffer);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get order detail by UUID or orderId (e.g. JP-2026-00001)' })
   findOne(@Param('id') id: string) {
     return this.adminOrdersService.findOne(id);
+  }
+
+  @Get(':id/invoice')
+  @ApiOperation({ summary: 'Download a PDF invoice for one order' })
+  async downloadInvoice(@Param('id') id: string, @Res() res: Response) {
+    const buffer = await this.adminOrdersService.generateInvoicePdf(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="invoice-${id}.pdf"`,
+    });
+    res.send(buffer);
   }
 
   @Patch(':id/status')

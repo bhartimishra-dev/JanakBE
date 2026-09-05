@@ -1,8 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, ILike, In, Not, Repository } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
+import * as ExcelJS from 'exceljs';
+import PDFDocument = require('pdfkit');
 import { OrderStatus } from '../../../common/enums/order-status.enum';
+import { CompanyProfile } from '../../company-profile/entities/company-profile.entity';
 import { OrderTracking } from '../../orders/entities/order-tracking.entity';
 import { Order } from '../../orders/entities/order.entity';
 import { User } from '../../users/entities/user.entity';
@@ -57,6 +60,7 @@ export interface PaginatedOrders {
   page: number;
   limit: number;
   totalPages: number;
+  tabCounts: { ongoing: number; completed: number };
 }
 
 @Injectable()
@@ -66,9 +70,54 @@ export class AdminOrdersService {
     private ordersRepository: Repository<Order>,
     @InjectRepository(OrderTracking)
     private trackingRepository: Repository<OrderTracking>,
+    @InjectRepository(CompanyProfile)
+    private companyProfileRepository: Repository<CompanyProfile>,
     private notificationsService: NotificationsService,
     private configService: ConfigService,
   ) {}
+
+  private async getTabCounts(): Promise<{ ongoing: number; completed: number }> {
+    const [ongoing, completed] = await Promise.all([
+      this.ordersRepository.count({ where: { status: In(ONGOING_STATUSES) } }),
+      this.ordersRepository.count({ where: { status: In(COMPLETED_STATUSES) } }),
+    ]);
+    return { ongoing, completed };
+  }
+
+  /** Shared by findAll() and exportExcel() so list and export never drift apart. */
+  private applyFilters(
+    qb: SelectQueryBuilder<Order>,
+    tab: 'ongoing' | 'completed' = 'ongoing',
+    search?: string,
+    from?: string,
+    to?: string,
+    status?: OrderStatus,
+  ): SelectQueryBuilder<Order> {
+    if (status) {
+      qb.andWhere('o.status = :status', { status });
+    } else if (tab === 'completed') {
+      qb.andWhere('o.status IN (:...statuses)', { statuses: COMPLETED_STATUSES });
+    } else {
+      qb.andWhere('o.status IN (:...statuses)', { statuses: ONGOING_STATUSES });
+    }
+
+    if (search) {
+      qb.andWhere('LOWER(o.orderId) LIKE LOWER(:search)', { search: `%${search}%` });
+    }
+
+    if (from) {
+      const start = new Date(from);
+      start.setHours(0, 0, 0, 0);
+      qb.andWhere('o.createdAt >= :from', { from: start });
+    }
+    if (to) {
+      const end = new Date(to);
+      end.setHours(23, 59, 59, 999);
+      qb.andWhere('o.createdAt <= :to', { to: end });
+    }
+
+    return qb;
+  }
 
   async findAll(
     tab: 'ongoing' | 'completed' = 'ongoing',
@@ -88,58 +137,48 @@ export class AdminOrdersService {
       .leftJoinAndSelect('o.tracking', 't')
       .orderBy('o.createdAt', 'DESC');
 
-    // Tab filter
-    if (status) {
-      qb.andWhere('o.status = :status', { status });
-    } else if (tab === 'completed') {
-      qb.andWhere('o.status IN (:...statuses)', { statuses: COMPLETED_STATUSES });
-    } else {
-      qb.andWhere('o.status IN (:...statuses)', { statuses: ONGOING_STATUSES });
-    }
-
-    // Search by orderId
-    if (search) {
-      qb.andWhere('LOWER(o.orderId) LIKE LOWER(:search)', { search: `%${search}%` });
-    }
-
-    // Date range
-    if (from) {
-      const start = new Date(from);
-      start.setHours(0, 0, 0, 0);
-      qb.andWhere('o.createdAt >= :from', { from: start });
-    }
-    if (to) {
-      const end = new Date(to);
-      end.setHours(23, 59, 59, 999);
-      qb.andWhere('o.createdAt <= :to', { to: end });
-    }
+    this.applyFilters(qb, tab, search, from, to, status);
 
     const [orders, total] = await qb
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
 
+    const tabCounts = await this.getTabCounts();
+    const profiles = await this.getCompanyProfilesFor(orders.map((o) => o.user?.id).filter(Boolean));
+
     return {
-      orders: orders.map((o) => this.toListItem(o)),
+      orders: orders.map((o) => this.toListItem(o, profiles)),
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+      tabCounts,
     };
   }
 
-  private toListItem(o: Order): AdminOrderListItem {
+  private async getCompanyProfilesFor(userIds: string[]): Promise<Map<string, CompanyProfile>> {
+    if (!userIds.length) return new Map();
+    const profiles = await this.companyProfileRepository.find({
+      where: { user: { id: In(userIds) } },
+      relations: { user: true },
+    });
+    return new Map(profiles.map((p) => [p.user.id, p]));
+  }
+
+  private toListItem(o: Order, profiles: Map<string, CompanyProfile> = new Map()): AdminOrderListItem {
     const addr = o.shippingAddress ?? {};
     const deliveryAddress = [addr['addressLine1'], addr['city'], addr['state'], addr['pincode']]
       .filter(Boolean)
       .join(', ');
+    const profile = o.user ? profiles.get(o.user.id) : undefined;
 
     return {
       id: o.id,
       orderId: o.orderId,
-      customerName: (o.user as any)?.name ?? (o.user as any)?.email ?? 'Unknown',
-      customerEmail: (o.user as any)?.email ?? '',
-      customerContact: addr['phone'] ?? addr['mobile'] ?? '',
+      customerName: profile?.companyName ?? o.user?.email ?? 'Unknown',
+      customerEmail: o.user?.email ?? '',
+      customerContact: profile?.phone ?? addr['phone'] ?? addr['mobile'] ?? '',
       bookingAmount: Number(o.advanceAmount),
       orderStatus: o.status,
       paymentStatus: { advancePaid: o.advancePaid, balancePaid: o.balancePaid },
@@ -167,6 +206,121 @@ export class AdminOrdersService {
     });
     if (!order) throw new NotFoundException('Order not found');
     return order;
+  }
+
+  /**
+   * Excel export of orders — same filters as findAll() (tab/search/status/date
+   * range), but unpaginated: every matching row goes into the sheet.
+   */
+  async exportExcel(
+    tab: 'ongoing' | 'completed' = 'ongoing',
+    search?: string,
+    from?: string,
+    to?: string,
+    status?: OrderStatus,
+  ): Promise<Buffer> {
+    const qb = this.ordersRepository
+      .createQueryBuilder('o')
+      .leftJoinAndSelect('o.user', 'u')
+      .leftJoinAndSelect('o.items', 'i')
+      .orderBy('o.createdAt', 'DESC');
+    this.applyFilters(qb, tab, search, from, to, status);
+
+    const orders = await qb.getMany();
+    const profiles = await this.getCompanyProfilesFor(orders.map((o) => o.user?.id).filter(Boolean));
+    const rows = orders.map((o) => this.toListItem(o, profiles));
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Orders');
+    sheet.columns = [
+      { header: 'Order ID', key: 'orderId', width: 20 },
+      { header: 'Customer Name', key: 'customerName', width: 28 },
+      { header: 'Customer Email', key: 'customerEmail', width: 28 },
+      { header: 'Customer Contact', key: 'customerContact', width: 18 },
+      { header: 'Status', key: 'orderStatus', width: 22 },
+      { header: 'Advance Paid', key: 'advancePaid', width: 14 },
+      { header: 'Balance Paid', key: 'balancePaid', width: 14 },
+      { header: 'Booking Amount (₹)', key: 'bookingAmount', width: 18 },
+      { header: 'Total Amount (₹)', key: 'totalAmount', width: 18 },
+      { header: 'Delivery Address', key: 'deliveryAddress', width: 45 },
+      { header: 'Created At', key: 'createdAt', width: 22 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    rows.forEach((row) => {
+      sheet.addRow({
+        orderId: row.orderId,
+        customerName: row.customerName,
+        customerEmail: row.customerEmail,
+        customerContact: row.customerContact,
+        orderStatus: row.orderStatus,
+        advancePaid: row.paymentStatus.advancePaid ? 'Yes' : 'No',
+        balancePaid: row.paymentStatus.balancePaid ? 'Yes' : 'No',
+        bookingAmount: row.bookingAmount,
+        totalAmount: row.totalAmount,
+        deliveryAddress: row.deliveryAddress,
+        createdAt: row.createdAt.toISOString(),
+      });
+    });
+
+    return workbook.xlsx.writeBuffer() as Promise<unknown> as Promise<Buffer>;
+  }
+
+  /** Renders a simple PDF invoice for one order. */
+  async generateInvoicePdf(id: string): Promise<Buffer> {
+    const order = await this.findOne(id);
+    const profiles = await this.getCompanyProfilesFor(order.user?.id ? [order.user.id] : []);
+    const profile = order.user ? profiles.get(order.user.id) : undefined;
+    const addr = order.shippingAddress ?? ({} as Record<string, string>);
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50 });
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      doc.fontSize(20).text('Invoice', { align: 'center' });
+      doc.moveDown();
+
+      doc.fontSize(10);
+      doc.text(`Order ID: ${order.orderId}`);
+      doc.text(`Date: ${order.createdAt.toDateString()}`);
+      doc.text(`Status: ${order.status}`);
+      doc.moveDown();
+
+      doc.text('Bill To:', { underline: true });
+      doc.text(profile?.companyName ?? order.user?.email ?? 'Customer');
+      if (addr['addressLine1']) doc.text(addr['addressLine1']);
+      if (addr['addressLine2']) doc.text(addr['addressLine2']);
+      const cityLine = [addr['city'], addr['state'], addr['pincode']].filter(Boolean).join(', ');
+      if (cityLine) doc.text(cityLine);
+      doc.text(`Phone: ${profile?.phone ?? addr['phone'] ?? ''}`);
+      doc.moveDown();
+
+      doc.text('Items:', { underline: true });
+      order.items.forEach((item) => {
+        doc.text(
+          `${item.productName}  x${item.quantity}  @ Rs. ${Number(item.unitPrice).toFixed(2)}  =  Rs. ${Number(item.totalPrice).toFixed(2)}`,
+        );
+      });
+      doc.moveDown();
+
+      doc.text(`Subtotal: Rs. ${Number(order.subtotal).toFixed(2)}`);
+      doc.text(`GST: Rs. ${Number(order.gstAmount).toFixed(2)}`);
+      doc.text(`Shipping: Rs. ${Number(order.shippingAmount).toFixed(2)}`);
+      doc.moveDown(0.5);
+      doc.fontSize(13).text(`Total: Rs. ${Number(order.totalAmount).toFixed(2)}`, { underline: true });
+
+      if (order.advanceAmount) {
+        doc.moveDown();
+        doc.fontSize(10);
+        doc.text(`Advance paid: Rs. ${Number(order.advanceAmount).toFixed(2)} (${order.advancePaid ? 'received' : 'pending'})`);
+        doc.text(`Balance due: Rs. ${Number(order.balanceAmount).toFixed(2)} (${order.balancePaid ? 'received' : 'pending'})`);
+      }
+
+      doc.end();
+    });
   }
 
   async updateStatus(id: string, status: OrderStatus) {

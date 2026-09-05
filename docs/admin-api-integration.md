@@ -310,13 +310,20 @@ Base path: `/admin/orders`
       ]
     }
   ],
-  "total": 5, "page": 1, "limit": 20, "totalPages": 1
+  "total": 5, "page": 1, "limit": 20, "totalPages": 1,
+  "tabCounts": { "ongoing": 12, "completed": 8 }
 }
 ```
-> ⚠️ **Known gap** (pre-existing, not from this session): `customerName` reads `user.name`, which doesn't exist on the `User` entity — it silently falls back to email. Same underlying issue as `recent-quotations.raisedBy` above. If you need a real display name, resolve it client-side via `/admin/users/:userId` (or a `CompanyProfile` lookup) rather than trusting this field.
+`tabCounts` is always the *global* count for both tabs regardless of the current filters/page — use it for the tab badges, same as quotations' `tabCounts`. `customerName`/`customerContact` now resolve from `CompanyProfile` (falls back to email/the order's stored shipping-address phone) — the old "always falls back to email" gap is fixed.
+
+### `GET /admin/orders/export/excel`
+Same query params as the list endpoint (`tab`, `search`, `from`, `to`, `status`) but **unpaginated** — every matching row is exported, not just the current page. Returns an `.xlsx` file (`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment`), not the usual JSON envelope.
 
 ### `GET /admin/orders/:id`
 Accepts either the UUID **or** the human `orderId` (e.g. `JP-2026-00001`) in the path. Returns the full `Order` entity with `user`, `items.product.images`, `tracking`.
+
+### `GET /admin/orders/:id/invoice`
+Same `:id` matching (UUID or `JP-2026-00001`-style). Returns a PDF invoice (`Content-Type: application/pdf`, `Content-Disposition: attachment`) — order details, bill-to (from `CompanyProfile`/shipping address), line items, subtotal/GST/shipping/total, and advance/balance payment status. Amounts are rendered as `Rs. 1234.00` rather than `₹` — PDFKit's standard fonts don't include the ₹ glyph and silently render it as a garbled character, so this avoids that rather than shipping broken invoices.
 
 ### `PATCH /admin/orders/:id/status`
 ```json
