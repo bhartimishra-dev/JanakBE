@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   DefaultValuePipe,
@@ -100,6 +101,7 @@ export class AdminCategoriesController {
     FileInterceptor('image', { storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } }),
   )
   uploadImage(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No image file provided — send it as multipart/form-data field "image"');
     return { url: `/uploads/category-images/${file.filename}`, name: file.originalname };
   }
 }
