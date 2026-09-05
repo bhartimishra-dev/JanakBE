@@ -244,6 +244,20 @@ Base path: `/admin/categories`
 Single category, same shape (with `productQty`).
 
 ### `POST /admin/categories`
+Accepts **either** `multipart/form-data` (upload the image file directly) **or** plain `application/json` (pass an image URL) — pick whichever fits your flow.
+
+**Option A — multipart, upload the file directly:**
+```
+Content-Type: multipart/form-data
+name=GNSS Antenna
+isActive=true
+showOnWebsite=true
+showOnApp=false
+sortOrder=0
+image=<binary file, jpg/jpeg/png/webp, max 5MB>
+```
+
+**Option B — JSON, pass an existing image URL:**
 ```json
 {
   "name": "GNSS Antenna",
@@ -254,22 +268,22 @@ Single category, same shape (with `productQty`).
   "sortOrder": 0
 }
 ```
-Only `name` required. `categoryCode` is auto-generated, don't send it. `slug` is derived from `name` server-side.
+If both an uploaded file and an `image` URL are somehow present in the same request, the uploaded file wins. Only `name` is required. `categoryCode` is auto-generated, don't send it. `slug` is derived from `name` server-side. Booleans/numbers sent via multipart arrive as strings (`"true"`, `"5"`) — these are coerced automatically, no special handling needed client-side.
 
 ### `PATCH /admin/categories/:id`
-Same body, all optional.
+Same body/either-format rules as create, all fields optional.
 
 ### `DELETE /admin/categories/:id`
 `{ "message": "Category deleted" }`
 
-### `POST /admin/categories/upload-image`
-`multipart/form-data`, field name **`image`** (jpg/jpeg/png/webp, max 5MB).
+### `POST /admin/categories/upload-image` (optional standalone step)
+`multipart/form-data`, field name **`image`** (jpg/jpeg/png/webp, max 5MB). You generally don't need this anymore — create/update accept the file directly now — but it's still there if you want to upload/preview an image before submitting the rest of the form (e.g. an "Upload Image" button that shows the picked file before "Add This Category" is clicked).
 
 **Response:**
 ```json
 { "url": "/uploads/category-images/1735...-923.jpg", "name": "GNNS_Antenna.jpeg" }
 ```
-Call this first, then pass the returned `url` into the `image` field of create/update. The URL is served directly (relative to `API_HOST`, no `/api` prefix — static assets are mounted at root).
+Pass the returned `url` into the `image` field of a subsequent JSON create/update call. The URL is served directly (relative to `API_HOST`, no `/api` prefix — static assets are mounted at root). Calling this without a file now returns a clean `400`, not a `500`.
 
 ---
 
@@ -317,7 +331,10 @@ Base path: `/admin/orders`
 `tabCounts` is always the *global* count for both tabs regardless of the current filters/page — use it for the tab badges, same as quotations' `tabCounts`. `customerName`/`customerContact` now resolve from `CompanyProfile` (falls back to email/the order's stored shipping-address phone) — the old "always falls back to email" gap is fixed.
 
 ### `GET /admin/orders/export/excel`
-Same query params as the list endpoint (`tab`, `search`, `from`, `to`, `status`) but **unpaginated** — every matching row is exported, not just the current page. Returns an `.xlsx` file (`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment`), not the usual JSON envelope.
+Same query params as the list endpoint (`tab`, `search`, `from`, `to`, `status`) but **unpaginated** — every matching row is exported, not just the current page. Returns an `.xlsx` file (`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment`), not the usual JSON envelope. Order-list-shaped columns (customer, status, booking/total amount, delivery address) — for a financial/invoice breakdown instead, see `export/invoices-excel` below.
+
+### `GET /admin/orders/export/invoices-excel`
+Query params: `from`, `to` (`YYYY-MM-DD` — the main filter for this one), plus `tab`/`status` for consistency. Also unpaginated, also an `.xlsx` file. Columns are invoice/financial-detail focused rather than order-list focused: Order ID, Invoice Date, Customer Name/Email/Contact, **GSTIN** (from `CompanyProfile`), Subtotal, GST, Shipping, Total, Advance Amount + paid?, Balance Amount + paid?, Payment Method, Transaction ID, Status. Meant for accounting reconciliation over a date range rather than an operational orders list.
 
 ### `GET /admin/orders/:id`
 Accepts either the UUID **or** the human `orderId` (e.g. `JP-2026-00001`) in the path. Returns the full `Order` entity with `user`, `items.product.images`, `tracking`.

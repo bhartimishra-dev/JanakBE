@@ -41,6 +41,24 @@ const fileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
   }
 };
 
+const imageUpload = () =>
+  UseInterceptors(FileInterceptor('image', { storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } }));
+
+const categoryFormBody = () =>
+  ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        image: { type: 'string', format: 'binary', description: 'Upload a file, or omit and send an image URL instead' },
+        isActive: { type: 'boolean' },
+        showOnWebsite: { type: 'boolean' },
+        showOnApp: { type: 'boolean' },
+        sortOrder: { type: 'number' },
+      },
+    },
+  });
+
 @ApiTags('Admin - Categories')
 @ApiBearerAuth()
 @Roles(UserRole.ADMIN)
@@ -71,15 +89,27 @@ export class AdminCategoriesController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create new category' })
-  create(@Body() dto: CreateCategoryDto) {
-    return this.adminCategoriesService.create(dto);
+  @ApiOperation({
+    summary: 'Create new category',
+    description: 'Send multipart/form-data with an "image" file to upload directly, or JSON with an image URL — both work.',
+  })
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @categoryFormBody()
+  @imageUpload()
+  create(@Body() dto: CreateCategoryDto, @UploadedFile() file?: Express.Multer.File) {
+    return this.adminCategoriesService.create(dto, file);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update category' })
-  update(@Param('id') id: string, @Body() dto: Partial<CreateCategoryDto>) {
-    return this.adminCategoriesService.update(id, dto);
+  @ApiOperation({
+    summary: 'Update category',
+    description: 'Send multipart/form-data with an "image" file to replace it directly, or JSON with an image URL — both work.',
+  })
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @categoryFormBody()
+  @imageUpload()
+  update(@Param('id') id: string, @Body() dto: Partial<CreateCategoryDto>, @UploadedFile() file?: Express.Multer.File) {
+    return this.adminCategoriesService.update(id, dto, file);
   }
 
   @Delete(':id')
@@ -89,7 +119,10 @@ export class AdminCategoriesController {
   }
 
   @Post('upload-image')
-  @ApiOperation({ summary: 'Upload a category image, returns its URL to use in create/update' })
+  @ApiOperation({
+    summary: 'Upload a category image standalone, returns its URL',
+    description: 'Only needed if you want to upload an image separately from create/update (e.g. to preview it first) — create/update now accept the file directly too.',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -97,9 +130,7 @@ export class AdminCategoriesController {
       properties: { image: { type: 'string', format: 'binary' } },
     },
   })
-  @UseInterceptors(
-    FileInterceptor('image', { storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } }),
-  )
+  @imageUpload()
   uploadImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No image file provided — send it as multipart/form-data field "image"');
     return { url: `/uploads/category-images/${file.filename}`, name: file.originalname };

@@ -266,6 +266,75 @@ export class AdminOrdersService {
     return workbook.xlsx.writeBuffer() as Promise<unknown> as Promise<Buffer>;
   }
 
+  /**
+   * Excel export of invoice-level financial details (subtotal/GST/shipping/
+   * total/advance/balance/GSTIN) for orders in a date range — for accounting
+   * reconciliation, as opposed to exportExcel()'s order-list-shaped columns.
+   */
+  async exportInvoicesExcel(
+    from?: string,
+    to?: string,
+    tab: 'ongoing' | 'completed' = 'ongoing',
+    status?: OrderStatus,
+  ): Promise<Buffer> {
+    const qb = this.ordersRepository
+      .createQueryBuilder('o')
+      .leftJoinAndSelect('o.user', 'u')
+      .orderBy('o.createdAt', 'DESC');
+    this.applyFilters(qb, tab, undefined, from, to, status);
+
+    const orders = await qb.getMany();
+    const profiles = await this.getCompanyProfilesFor(orders.map((o) => o.user?.id).filter(Boolean));
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Invoices');
+    sheet.columns = [
+      { header: 'Order ID', key: 'orderId', width: 20 },
+      { header: 'Invoice Date', key: 'invoiceDate', width: 14 },
+      { header: 'Customer Name', key: 'customerName', width: 28 },
+      { header: 'Customer Email', key: 'customerEmail', width: 28 },
+      { header: 'Customer Contact', key: 'customerContact', width: 18 },
+      { header: 'GSTIN', key: 'gstin', width: 18 },
+      { header: 'Subtotal (₹)', key: 'subtotal', width: 16 },
+      { header: 'GST (₹)', key: 'gstAmount', width: 14 },
+      { header: 'Shipping (₹)', key: 'shippingAmount', width: 14 },
+      { header: 'Total (₹)', key: 'totalAmount', width: 16 },
+      { header: 'Advance Amount (₹)', key: 'advanceAmount', width: 18 },
+      { header: 'Advance Paid', key: 'advancePaid', width: 14 },
+      { header: 'Balance Amount (₹)', key: 'balanceAmount', width: 18 },
+      { header: 'Balance Paid', key: 'balancePaid', width: 14 },
+      { header: 'Payment Method', key: 'paymentMethod', width: 16 },
+      { header: 'Transaction ID', key: 'transactionId', width: 24 },
+      { header: 'Status', key: 'status', width: 22 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    orders.forEach((o) => {
+      const profile = o.user ? profiles.get(o.user.id) : undefined;
+      sheet.addRow({
+        orderId: o.orderId,
+        invoiceDate: o.createdAt.toISOString().slice(0, 10),
+        customerName: profile?.companyName ?? o.user?.email ?? 'Unknown',
+        customerEmail: o.user?.email ?? '',
+        customerContact: profile?.phone ?? '',
+        gstin: profile?.gstin ?? '',
+        subtotal: Number(o.subtotal),
+        gstAmount: Number(o.gstAmount),
+        shippingAmount: Number(o.shippingAmount),
+        totalAmount: Number(o.totalAmount),
+        advanceAmount: Number(o.advanceAmount),
+        advancePaid: o.advancePaid ? 'Yes' : 'No',
+        balanceAmount: Number(o.balanceAmount),
+        balancePaid: o.balancePaid ? 'Yes' : 'No',
+        paymentMethod: o.paymentMethod ?? '',
+        transactionId: o.transactionId ?? '',
+        status: o.status,
+      });
+    });
+
+    return workbook.xlsx.writeBuffer() as Promise<unknown> as Promise<Buffer>;
+  }
+
   /** Renders a simple PDF invoice for one order. */
   async generateInvoicePdf(id: string): Promise<Buffer> {
     const order = await this.findOne(id);

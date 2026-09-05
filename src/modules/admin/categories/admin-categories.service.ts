@@ -86,22 +86,30 @@ export class AdminCategoriesService {
     return cat;
   }
 
-  async create(dto: CreateCategoryDto) {
+  /** An uploaded file (when present) always wins over a URL string in dto.image. */
+  private resolveImage(dto: Partial<CreateCategoryDto>, file?: Express.Multer.File): string | undefined {
+    if (file) return `/uploads/category-images/${file.filename}`;
+    return dto.image;
+  }
+
+  async create(dto: CreateCategoryDto, file?: Express.Multer.File) {
     const slug = slugify(dto.name, { lower: true, strict: true });
     const categoryCode = await generateUniqueEntityCode((code) =>
       this.categoryRepository.existsBy({ categoryCode: code }),
     );
-    const cat = this.categoryRepository.create({ ...dto, slug, categoryCode });
+    const image = this.resolveImage(dto, file);
+    const cat = this.categoryRepository.create({ ...dto, image, slug, categoryCode });
     const saved = await this.categoryRepository.save(cat);
     return this.findOne(saved.id);
   }
 
-  async update(id: string, dto: Partial<CreateCategoryDto>) {
+  async update(id: string, dto: Partial<CreateCategoryDto>, file?: Express.Multer.File) {
     const cat = await this.findOne(id);
     if (dto.name) {
       cat.slug = slugify(dto.name, { lower: true, strict: true });
     }
-    Object.assign(cat, dto);
+    const image = this.resolveImage(dto, file);
+    Object.assign(cat, dto, image !== undefined ? { image } : {});
     await this.categoryRepository.save(cat);
     return this.findOne(id);
   }

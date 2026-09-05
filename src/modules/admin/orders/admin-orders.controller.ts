@@ -86,6 +86,32 @@ export class AdminOrdersController {
     res.send(buffer);
   }
 
+  @Get('export/invoices-excel')
+  @ApiOperation({
+    summary: 'Download invoice-level financial details as an Excel file, for a date range',
+    description:
+      'Per-order financial breakdown (subtotal, GST, shipping, total, advance/balance, GSTIN) for accounting/reconciliation — as opposed to export/excel\'s order-list-shaped columns.',
+  })
+  @ApiQuery({ name: 'from', required: false, description: 'Start date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'to', required: false, description: 'End date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'tab', enum: ['ongoing', 'completed'], required: false })
+  @ApiQuery({ name: 'status', enum: OrderStatus, required: false, description: 'Filter by specific status' })
+  async exportInvoicesExcel(
+    @Res() res: Response,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('tab') tab: 'ongoing' | 'completed' = 'ongoing',
+    @Query('status') status?: OrderStatus,
+  ) {
+    const buffer = await this.adminOrdersService.exportInvoicesExcel(from, to, tab, status);
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="invoices-${stamp}.xlsx"`,
+    });
+    res.send(buffer);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get order detail by UUID or orderId (e.g. JP-2026-00001)' })
   findOne(@Param('id') id: string) {
