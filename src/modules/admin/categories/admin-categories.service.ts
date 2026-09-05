@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import slugify from 'slugify';
 import { generateUniqueEntityCode } from '../../../common/utils/code-generator.util';
 import { Category } from '../../categories/entities/category.entity';
@@ -116,7 +116,18 @@ export class AdminCategoriesService {
 
   async remove(id: string) {
     const cat = await this.findOne(id);
-    await this.categoryRepository.remove(cat);
+    try {
+      await this.categoryRepository.remove(cat);
+    } catch (err) {
+      // FK violation — this category still has products pointing to it (no
+      // onDelete cascade is configured on that relation, intentionally).
+      if (err instanceof QueryFailedError && (err as any).code === '23503') {
+        throw new ConflictException(
+          `Cannot delete "${cat.name}" — ${cat.productQty ?? 'some'} product(s) still reference this category. Move or delete them first.`,
+        );
+      }
+      throw err;
+    }
     return { message: 'Category deleted' };
   }
 }
