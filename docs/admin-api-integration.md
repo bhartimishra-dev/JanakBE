@@ -89,10 +89,10 @@ Summary tiles for the dashboard home screen.
 Same `period`/`from`/`to` query params. Returns an array for the bar chart:
 ```json
 [
-  { "categoryId": "uuid", "categoryName": "GNSS Antenna", "totalSales": 230000, "orderCount": 4 }
+  { "categoryId": "uuid", "categoryName": "GNSS Antenna", "totalSales": 230000, "orderCount": 4, "quantitySold": 6 }
 ]
 ```
-Sorted by `totalSales` descending.
+**Every active category is always included**, even with zero sales in the selected period (`totalSales`/`orderCount`/`quantitySold` all `0`) — this used to silently drop any category with no orders in the window instead of showing it at zero, which would make bars disappear from the chart rather than read as empty. Sorted by category `sortOrder`/`name` (stable chart ordering), not by sales value.
 
 ### `GET /admin/dashboard/recent-quotations`
 
@@ -104,13 +104,13 @@ Query: `limit` (default `10`).
     "quoteId": "Q-2026-00045",
     "status": "pending",
     "createdAt": "2026-08-17T16:49:46.083Z",
-    "raisedBy": "john@example.com",
+    "raisedBy": "NHAI Northern Zone",
     "productRequested": "AgAnt-3S-430x311",
     "quotedPrice": null
   }
 ]
 ```
-> `raisedBy` is currently the customer's **email**, not a display name — `User` has no `name` column. For a proper customer name, cross-reference `/admin/users/:userId` or `/admin/quotes/:id` (both resolve the company name from `CompanyProfile`).
+`raisedBy` resolves the customer's company name from `CompanyProfile`, falling back to email if they haven't filled one in — same resolution as `/admin/quotes` and `/admin/users`.
 
 ---
 
@@ -691,6 +691,6 @@ Single `ApiLog` entity, or `null` if not found (this one doesn't 404 — check f
 ## Cross-cutting notes for frontend
 
 - **Human-readable codes** (`productCode`, `categoryCode`): format `Jnk<YY>-<7 digits>`, e.g. `Jnk26-0008419`. Always server-generated on create — never send these fields.
-- **`User` has no `name` field.** Anywhere you see a "customer name" that isn't explicitly resolved via `CompanyProfile` (orders list, recent-quotations), it's silently falling back to email. Quotes, coupons, and users modules all resolve the real company name correctly — orders does not (pre-existing, not fixed this round).
+- **`User` has no `name` field.** Anywhere you see a "customer name", it's resolved from `CompanyProfile.companyName` with an email fallback — orders, quotes, coupons, users, and dashboard (`recent-quotations`) all do this consistently now.
 - **Static uploads** (category images) are served from the API host root, not under `/api` — e.g. `{API_HOST}/uploads/category-images/xxx.jpg`.
 - Boolean query params (`hasCartItems`, `abandoned`) must be sent as the **string** `"true"`, not a JSON boolean — they're compared with `=== 'true'` server-side.
