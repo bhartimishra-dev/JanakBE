@@ -1,4 +1,5 @@
 import {
+  AfterLoad,
   Column,
   CreateDateColumn,
   Entity,
@@ -27,7 +28,7 @@ export class Category {
 
   /**
    * @deprecated superseded by `image`. Kept (not dropped) so existing rows aren't
-   * lost — AdminCategoriesService falls back to this when `image` is unset.
+   * lost — @AfterLoad() below falls back to this when `image` is unset.
    */
   @Column({ nullable: true })
   icon: string;
@@ -55,4 +56,20 @@ export class Category {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  /**
+   * Runs after every load — including as a nested relation (e.g. a product's
+   * `category`), not just when queried directly — so `image` is always a
+   * usable absolute URL no matter which service loaded this row. Entities
+   * aren't part of the Nest DI container, so APP_URL is read from
+   * process.env directly rather than via ConfigService.
+   */
+  @AfterLoad()
+  normalizeImage() {
+    if (!this.image && this.icon) this.image = this.icon;
+    if (this.image && !/^https?:\/\//i.test(this.image)) {
+      const baseUrl = process.env.APP_URL || 'http://localhost:3001';
+      this.image = `${baseUrl}${this.image.startsWith('/') ? '' : '/'}${this.image}`;
+    }
+  }
 }

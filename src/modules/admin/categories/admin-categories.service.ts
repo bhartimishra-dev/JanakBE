@@ -21,19 +21,6 @@ export class AdminCategoriesService {
     return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
   }
 
-  /**
-   * Falls back to the legacy `icon` value when `image` hasn't been set yet, and
-   * upgrades any relative path (from before this normalization existed) to a
-   * full absolute URL — so older rows serve correctly without needing a re-save.
-   */
-  private applyImageFallback(categories: Category[]): Category[] {
-    categories.forEach((c) => {
-      if (!c.image && c.icon) c.image = c.icon;
-      if (c.image) c.image = this.toAbsoluteUrl(c.image);
-    });
-    return categories;
-  }
-
   private async mapProductQty(categories: Category[]): Promise<Category[]> {
     if (!categories.length) return categories;
     const ids = categories.map((c) => c.id);
@@ -80,7 +67,6 @@ export class AdminCategoriesService {
       .getManyAndCount();
 
     await this.mapProductQty(categories);
-    this.applyImageFallback(categories);
 
     return {
       categories,
@@ -95,7 +81,6 @@ export class AdminCategoriesService {
     const cat = await this.categoryRepository.findOne({ where: { id } });
     if (!cat) throw new NotFoundException('Category not found');
     await this.mapProductQty([cat]);
-    this.applyImageFallback([cat]);
     return cat;
   }
 
@@ -103,9 +88,13 @@ export class AdminCategoriesService {
     return this.toAbsoluteUrl(`/uploads/category-images/${filename}`);
   }
 
-  /** An uploaded file (when present) always wins over a URL string in dto.image. */
+  /**
+   * An uploaded file (when present) always wins over a URL string in dto.image.
+   * Stores the relative path — Category's @AfterLoad() normalizes it to
+   * absolute on every subsequent read, so it's never baked in stale here.
+   */
   private resolveImage(dto: Partial<CreateCategoryDto>, file?: Express.Multer.File): string | undefined {
-    if (file) return this.buildCategoryImageUrl(file.filename);
+    if (file) return `/uploads/category-images/${file.filename}`;
     return dto.image;
   }
 
