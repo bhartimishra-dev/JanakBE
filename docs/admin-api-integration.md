@@ -171,6 +171,12 @@ Full product incl. `category`, `brand`, `images[]`, `specs[]`, `documents[]`.
 ```
 Required: `name`, `description`, `categoryId`, `brandId`, `price`, `stockStatus` (enum: `in_stock` \| `limited_stock` \| `get_quote` \| `on_order`). Everything else optional.
 
+Common validation mistakes (all rejected with a `400` naming exactly which field, per the global error shape at the top of this doc — none of these are backend bugs):
+- `categoryId`/`brandId` must be **real UUIDs** from `GET /admin/categories` / your brands list — not placeholder text.
+- `images[]` entries use `sortOrder`, not `order` — an unrecognized field name is rejected outright (`forbidNonWhitelisted` is on), not silently dropped.
+- Every `images[]` entry needs a real `url` — get one from the upload endpoints above first; there's no way to send a raw file directly in the create/update body.
+- Every `specs[]` entry needs both `key` and `value` filled in — filter out empty/incomplete spec rows client-side before submitting rather than sending a partial object.
+
 - `price` = **listing/selling price** — this is what cart/checkout actually charge.
 - `originalPrice` = MRP shown struck through. Optional, purely cosmetic.
 - `images[].type` = `image` \| `video` (default `image`).
@@ -183,6 +189,26 @@ Same body as create, all fields optional (`Partial<CreateProductDto>`). **`image
 
 ### `DELETE /admin/products/:id`
 `{ "message": "Product deleted" }`
+
+### Uploading image/video and document files
+
+`images[]`/`documents[]` everywhere (create, update, and the sub-resource endpoints below) only accept **URL strings**, not raw files. Upload the file(s) first to get URLs back:
+
+**`POST /admin/products/upload-images`** — `multipart/form-data`, field name **`images`** (repeat the field for multiple files, up to 10). Accepts jpg/jpeg/png/webp images or mp4/mov/webm videos, max 20MB each.
+```json
+[
+  { "url": "https://.../uploads/products/1735...-588991.png", "name": "front.png", "type": "image" },
+  { "url": "https://.../uploads/products/1735...-405919.mp4", "name": "demo.mp4", "type": "video" }
+]
+```
+`type` is inferred automatically from the file extension. `url` is a full absolute URL — use it directly.
+
+**`POST /admin/products/upload-documents`** — same shape, field name **`documents`**, accepts pdf/doc/docx, max 20MB each.
+```json
+[{ "url": "https://.../uploads/product-documents/1735...-126860.pdf", "name": "brochure.pdf", "fileType": "pdf" }]
+```
+
+Take the `url`/`name`/`type` (or `fileType`) from these responses and drop them straight into the `images[]`/`documents[]` array of a create/update call, or the sub-resource `POST` endpoints below. Both upload endpoints return a clean `400` for an unsupported file type or if no file was sent — not a server error.
 
 ### Image / video sub-resource
 
@@ -200,8 +226,6 @@ Same body as create, all fields optional (`Partial<CreateProductDto>`). **`image
 | `DELETE` | `/admin/products/:id/documents/:documentId` | — | `{ "message": "Document deleted" }` |
 
 All four sub-resource endpoints return the full updated product (same shape as `GET /:id`).
-
-> Note: these endpoints accept `url` strings, not raw file uploads — upload the file to storage yourself first (or use the category image-upload pattern below as a model) and pass the resulting URL.
 
 ---
 

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -28,7 +29,7 @@ const fileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
   if (allowed.includes(extname(file.originalname).toLowerCase())) {
     cb(null, true);
   } else {
-    cb(new Error('Only JPG, PNG, and PDF files are allowed'), false);
+    cb(new BadRequestException('Only JPG, PNG, and PDF files are allowed'), false);
   }
 };
 

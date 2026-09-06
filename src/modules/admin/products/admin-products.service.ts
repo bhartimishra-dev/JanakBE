@@ -1,8 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { extname } from 'path';
 import slugify from 'slugify';
 import { generateUniqueEntityCode } from '../../../common/utils/code-generator.util';
+import { MediaType } from '../../../common/enums/media-type.enum';
 import { Brand } from '../../brands/entities/brand.entity';
 import { Category } from '../../categories/entities/category.entity';
 import { ProductDocument } from '../../products/entities/product-document.entity';
@@ -15,6 +18,8 @@ import {
   CreateProductDto,
   ReorderProductImagesDto,
 } from '../dto/create-product.dto';
+
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm']);
 
 @Injectable()
 export class AdminProductsService {
@@ -31,7 +36,30 @@ export class AdminProductsService {
     private specsRepository: Repository<ProductSpec>,
     @InjectRepository(ProductDocument)
     private documentsRepository: Repository<ProductDocument>,
+    private configService: ConfigService,
   ) {}
+
+  private toAbsoluteUrl(path: string): string {
+    if (/^https?:\/\//i.test(path)) return path;
+    const baseUrl = this.configService.get<string>('APP_URL', 'http://localhost:3001');
+    return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+  }
+
+  uploadImages(files: Express.Multer.File[]) {
+    return files.map((file) => ({
+      url: this.toAbsoluteUrl(`/uploads/products/${file.filename}`),
+      name: file.originalname,
+      type: VIDEO_EXTENSIONS.has(extname(file.originalname).toLowerCase()) ? MediaType.VIDEO : MediaType.IMAGE,
+    }));
+  }
+
+  uploadDocuments(files: Express.Multer.File[]) {
+    return files.map((file) => ({
+      url: this.toAbsoluteUrl(`/uploads/product-documents/${file.filename}`),
+      name: file.originalname,
+      fileType: extname(file.originalname).slice(1).toLowerCase(),
+    }));
+  }
 
   async findAll(
     page = 1,

@@ -1,5 +1,23 @@
-import { Body, Controller, DefaultValuePipe, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  DefaultValuePipe,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  UploadedFiles,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { RolesGuard } from '../../../common/guards/roles.guard';
@@ -10,6 +28,44 @@ import {
   CreateProductDto,
   ReorderProductImagesDto,
 } from '../dto/create-product.dto';
+
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
+const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.webm'];
+const DOCUMENT_EXTENSIONS = ['.pdf', '.doc', '.docx'];
+
+const mediaStorage = diskStorage({
+  destination: './public/uploads/products',
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+    cb(null, `${unique}${extname(file.originalname)}`);
+  },
+});
+
+const mediaFileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
+  const ext = extname(file.originalname).toLowerCase();
+  if ([...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS].includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(new BadRequestException('Only JPG, PNG, WEBP images or MP4, MOV, WEBM videos are allowed'), false);
+  }
+};
+
+const documentStorage = diskStorage({
+  destination: './public/uploads/product-documents',
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+    cb(null, `${unique}${extname(file.originalname)}`);
+  },
+});
+
+const documentFileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
+  const ext = extname(file.originalname).toLowerCase();
+  if (DOCUMENT_EXTENSIONS.includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(new BadRequestException('Only PDF, DOC, and DOCX documents are allowed'), false);
+  }
+};
 
 @ApiTags('Admin - Products')
 @ApiBearerAuth()
@@ -58,6 +114,51 @@ export class AdminProductsController {
   @ApiOperation({ summary: 'Delete product' })
   remove(@Param('id') id: string) {
     return this.adminProductsService.remove(id);
+  }
+
+  @Post('upload-images')
+  @ApiOperation({
+    summary: 'Upload one or more product images/videos, returns their URLs',
+    description:
+      'Upload files here first, then include the returned url/name/type entries in the images[] array of create/PATCH or POST :id/images.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { images: { type: 'array', items: { type: 'string', format: 'binary' } } },
+    },
+  })
+  @UseInterceptors(
+    FilesInterceptor('images', 10, { storage: mediaStorage, fileFilter: mediaFileFilter, limits: { fileSize: 20 * 1024 * 1024 } }),
+  )
+  uploadImages(@UploadedFiles() files: Express.Multer.File[]) {
+    if (!files?.length) {
+      throw new BadRequestException('No image/video files provided — send them as multipart/form-data field "images"');
+    }
+    return this.adminProductsService.uploadImages(files);
+  }
+
+  @Post('upload-documents')
+  @ApiOperation({
+    summary: 'Upload one or more product documents, returns their URLs',
+    description: 'Upload files here first, then include the returned url/name entries in the documents[] array of create/PATCH or POST :id/documents.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { documents: { type: 'array', items: { type: 'string', format: 'binary' } } },
+    },
+  })
+  @UseInterceptors(
+    FilesInterceptor('documents', 10, { storage: documentStorage, fileFilter: documentFileFilter, limits: { fileSize: 20 * 1024 * 1024 } }),
+  )
+  uploadDocuments(@UploadedFiles() files: Express.Multer.File[]) {
+    if (!files?.length) {
+      throw new BadRequestException('No document files provided — send them as multipart/form-data field "documents"');
+    }
+    return this.adminProductsService.uploadDocuments(files);
   }
 
   @Post(':id/images')
