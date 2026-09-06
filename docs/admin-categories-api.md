@@ -163,10 +163,10 @@ image: <binary file — jpg/jpeg/png/webp, max 5MB>
 
 **Response:**
 ```json
-{ "url": "/uploads/category-images/1735...-923.jpg", "name": "GNNS_Antenna.jpeg" }
+{ "url": "https://stagapi.janakgnss.com/uploads/category-images/1735...-923.jpg", "name": "GNNS_Antenna.jpeg" }
 ```
 
-Pass the returned `url` into the `image` field of a subsequent **JSON** create/update call (Option B above). Note: the returned `url` is served from the API host's root, **not** under `/api` — e.g. `{API_HOST}/uploads/category-images/1735...-923.jpg`, not `{API_HOST}/api/v1/...`.
+`url` is a full absolute URL (built from the `APP_URL` env var), ready to use directly — e.g. in an `<img src>` — with no further concatenation needed. It is **not** under the `/api` prefix, since static assets are mounted at the host root, not through the API's versioned routes. Pass it into the `image` field of a subsequent **JSON** create/update call (Option B above) if you're not uploading the file directly in that same request.
 
 Calling this without a file returns a clean `400` ("No image file provided — send it as multipart/form-data field \"image\""), not a server error.
 
@@ -176,5 +176,5 @@ Calling this without a file returns a clean `400` ("No image file provided — s
 
 - **`categoryCode` format**: `Jnk<YY>-<7 digits>`, e.g. `Jnk26-0008419` — same generator used for product codes, always server-side, never client-supplied.
 - **`image` vs `icon`**: `icon` was the original field name before this API existed in its current form; some pre-existing rows may have `icon` set but `image` empty. The API automatically falls back to `icon`'s value when reading a category whose `image` is unset, so you'll never see a blank image for a row that actually has one — just always read/write `image` going forward and ignore `icon` entirely.
-- **Static assets**: uploaded images are served from the API host's root (`{API_HOST}/uploads/category-images/...`), not under the `/api` prefix.
+- **Static assets**: uploaded images are served from the API host's root (`{APP_URL}/uploads/category-images/...`), not under the `/api` prefix. `image` in every response is always a full absolute URL — older rows that predate this (stored as a bare `/uploads/...` path) are normalized to absolute automatically on read, so you never need to prefix it yourself client-side.
 - **No pagination on the parent product list**: `productQty` tells you how many products reference a category, but doesn't return them — use `GET /admin/products?categoryId=<id>` to list them.

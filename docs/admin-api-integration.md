@@ -283,7 +283,7 @@ Same body/either-format rules as create, all fields optional.
 ```json
 { "url": "/uploads/category-images/1735...-923.jpg", "name": "GNNS_Antenna.jpeg" }
 ```
-Pass the returned `url` into the `image` field of a subsequent JSON create/update call. The URL is served directly (relative to `API_HOST`, no `/api` prefix — static assets are mounted at root). Calling this without a file now returns a clean `400`, not a `500`.
+`url` is a full absolute URL (e.g. `https://stagapi.janakgnss.com/uploads/category-images/...`), built from the `APP_URL` env var — use it directly, no concatenation needed. It's not under the `/api` prefix (static assets are mounted at the host root). Pass it into the `image` field of a subsequent JSON create/update call. Calling this without a file returns a clean `400`, not a `500`.
 
 ---
 

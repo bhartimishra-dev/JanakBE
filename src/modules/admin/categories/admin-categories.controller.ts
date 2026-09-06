@@ -133,6 +133,6 @@ export class AdminCategoriesController {
   @imageUpload()
   uploadImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No image file provided — send it as multipart/form-data field "image"');
-    return { url: `/uploads/category-images/${file.filename}`, name: file.originalname };
+    return this.adminCategoriesService.uploadImage(file);
   }
 }

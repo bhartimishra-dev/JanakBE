@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import slugify from 'slugify';
@@ -11,12 +12,24 @@ export class AdminCategoriesService {
   constructor(
     @InjectRepository(Category)
     private categoryRepository: Repository<Category>,
+    private configService: ConfigService,
   ) {}
 
-  /** Falls back to the legacy `icon` value when `image` hasn't been set yet, so pre-existing rows don't go blank. */
+  private toAbsoluteUrl(path: string): string {
+    if (/^https?:\/\//i.test(path)) return path; // already absolute (e.g. an external URL)
+    const baseUrl = this.configService.get<string>('APP_URL', 'http://localhost:3001');
+    return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+  }
+
+  /**
+   * Falls back to the legacy `icon` value when `image` hasn't been set yet, and
+   * upgrades any relative path (from before this normalization existed) to a
+   * full absolute URL — so older rows serve correctly without needing a re-save.
+   */
   private applyImageFallback(categories: Category[]): Category[] {
     categories.forEach((c) => {
       if (!c.image && c.icon) c.image = c.icon;
+      if (c.image) c.image = this.toAbsoluteUrl(c.image);
     });
     return categories;
   }
@@ -86,10 +99,19 @@ export class AdminCategoriesService {
     return cat;
   }
 
+  private buildCategoryImageUrl(filename: string): string {
+    return this.toAbsoluteUrl(`/uploads/category-images/${filename}`);
+  }
+
   /** An uploaded file (when present) always wins over a URL string in dto.image. */
   private resolveImage(dto: Partial<CreateCategoryDto>, file?: Express.Multer.File): string | undefined {
-    if (file) return `/uploads/category-images/${file.filename}`;
+    if (file) return this.buildCategoryImageUrl(file.filename);
     return dto.image;
+  }
+
+  /** Standalone upload — used by the optional POST /admin/categories/upload-image endpoint. */
+  uploadImage(file: Express.Multer.File) {
+    return { url: this.buildCategoryImageUrl(file.filename), name: file.originalname };
   }
 
   async create(dto: CreateCategoryDto, file?: Express.Multer.File) {
