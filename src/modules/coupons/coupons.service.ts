@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { calculateCouponDiscount } from '../../common/utils/coupon-discount.util';
+import { Cart } from '../cart/entities/cart.entity';
 import { Coupon } from './entities/coupon.entity';
 import { CreateCouponDto } from './dto/create-coupon.dto';
 import { User } from '../users/entities/user.entity';
@@ -10,6 +12,8 @@ export class CouponsService {
   constructor(
     @InjectRepository(Coupon)
     private couponsRepository: Repository<Coupon>,
+    @InjectRepository(Cart)
+    private cartRepository: Repository<Cart>,
   ) {}
 
   /**
@@ -89,6 +93,21 @@ export class CouponsService {
       throw new BadRequestException('This coupon is not valid for your account');
     }
 
+    // This used to just return the coupon's data — including minimumOrderValue
+    // — without ever comparing it to anything, so a ₹1,00,000-minimum coupon
+    // "validated" successfully for a cart worth ₹500. cart/coupon and checkout
+    // already enforced this; validate() needs the same check so a frontend
+    // that trusts a 200 here isn't shown a coupon as applicable when it isn't.
+    const cart = await this.cartRepository.findOne({
+      where: { user: { id: user.id } },
+      relations: { items: { product: true } },
+    });
+    const subtotal =
+      cart?.items.reduce((sum, item) => sum + Number(item.product.price) * item.quantity, 0) ?? 0;
+    if (coupon.minimumOrderValue != null && subtotal < Number(coupon.minimumOrderValue)) {
+      throw new BadRequestException(`Minimum order value of ₹${coupon.minimumOrderValue} required for this coupon`);
+    }
+
     return {
       code: coupon.code,
       discountType: coupon.discountType,
@@ -98,6 +117,7 @@ export class CouponsService {
       additionalDiscountType: coupon.additionalDiscountType,
       minimumOrderValue: coupon.minimumOrderValue,
       isPublic: coupon.isPublic,
+      discountAmount: calculateCouponDiscount(coupon, subtotal),
       freeProduct: coupon.freeProduct
         ? { id: coupon.freeProduct.id, name: coupon.freeProduct.name }
         : null,
