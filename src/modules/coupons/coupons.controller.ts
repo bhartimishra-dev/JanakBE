@@ -1,5 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { User } from '../users/entities/user.entity';
 import { CouponsService } from './coupons.service';
 import { ValidateCouponDto } from './dto/validate-coupon.dto';
 
@@ -13,7 +15,7 @@ export class CouponsController {
   @ApiOperation({
     summary: 'Validate a coupon code',
     description:
-      'Checks if a coupon code is active and not expired. Returns the discount percentage to apply on the subtotal. Case-insensitive.',
+      'Checks if a coupon is active, not expired, and usable by the current user (quote-linked/private coupons are rejected for anyone else). Case-insensitive.',
   })
   @ApiResponse({
     status: 200,
@@ -23,15 +25,25 @@ export class CouponsController {
         success: true,
         data: {
           code: 'SAVE10',
+          discountType: 'percentage',
+          discountValue: '10.00',
           discountPercent: '10.00',
+          maxDiscountAmount: null,
+          additionalDiscountType: null,
+          minimumOrderValue: null,
+          isPublic: true,
+          freeProduct: null,
         },
         message: 'Success',
         timestamp: '2026-06-16T09:00:00.000Z',
       },
     },
   })
-  @ApiResponse({ status: 400, description: 'Invalid or inactive coupon / Coupon has expired' })
-  validate(@Body() dto: ValidateCouponDto) {
-    return this.couponsService.validate(dto.code);
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or inactive coupon / Coupon has expired / Not valid for this account',
+  })
+  validate(@Body() dto: ValidateCouponDto, @CurrentUser() user: User) {
+    return this.couponsService.validate(dto.code, user);
   }
 }

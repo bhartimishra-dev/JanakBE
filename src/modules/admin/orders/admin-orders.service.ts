@@ -40,6 +40,8 @@ export interface AdminOrderListItem {
   orderStatus: OrderStatus;
   paymentStatus: { advancePaid: boolean; balancePaid: boolean };
   deliveryAddress: string;
+  discountAmount: number;
+  couponCode: string | null;
   totalAmount: number;
   createdAt: Date;
   items?: AdminOrderLineItem[];
@@ -183,6 +185,8 @@ export class AdminOrdersService {
       orderStatus: o.status,
       paymentStatus: { advancePaid: o.advancePaid, balancePaid: o.balancePaid },
       deliveryAddress,
+      discountAmount: Number(o.discountAmount ?? 0),
+      couponCode: o.couponCode ?? null,
       totalAmount: Number(o.totalAmount),
       createdAt: o.createdAt,
       items: (o.items ?? []).map((i) => ({
@@ -241,6 +245,8 @@ export class AdminOrdersService {
       { header: 'Advance Paid', key: 'advancePaid', width: 14 },
       { header: 'Balance Paid', key: 'balancePaid', width: 14 },
       { header: 'Booking Amount (₹)', key: 'bookingAmount', width: 18 },
+      { header: 'Discount (₹)', key: 'discountAmount', width: 14 },
+      { header: 'Coupon Code', key: 'couponCode', width: 18 },
       { header: 'Total Amount (₹)', key: 'totalAmount', width: 18 },
       { header: 'Delivery Address', key: 'deliveryAddress', width: 45 },
       { header: 'Created At', key: 'createdAt', width: 22 },
@@ -257,6 +263,8 @@ export class AdminOrdersService {
         advancePaid: row.paymentStatus.advancePaid ? 'Yes' : 'No',
         balancePaid: row.paymentStatus.balancePaid ? 'Yes' : 'No',
         bookingAmount: row.bookingAmount,
+        discountAmount: row.discountAmount,
+        couponCode: row.couponCode ?? '',
         totalAmount: row.totalAmount,
         deliveryAddress: row.deliveryAddress,
         createdAt: row.createdAt.toISOString(),
@@ -298,6 +306,8 @@ export class AdminOrdersService {
       { header: 'Subtotal (₹)', key: 'subtotal', width: 16 },
       { header: 'GST (₹)', key: 'gstAmount', width: 14 },
       { header: 'Shipping (₹)', key: 'shippingAmount', width: 14 },
+      { header: 'Discount (₹)', key: 'discountAmount', width: 14 },
+      { header: 'Coupon Code', key: 'couponCode', width: 18 },
       { header: 'Total (₹)', key: 'totalAmount', width: 16 },
       { header: 'Advance Amount (₹)', key: 'advanceAmount', width: 18 },
       { header: 'Advance Paid', key: 'advancePaid', width: 14 },
@@ -321,6 +331,8 @@ export class AdminOrdersService {
         subtotal: Number(o.subtotal),
         gstAmount: Number(o.gstAmount),
         shippingAmount: Number(o.shippingAmount),
+        discountAmount: Number(o.discountAmount ?? 0),
+        couponCode: o.couponCode ?? '',
         totalAmount: Number(o.totalAmount),
         advanceAmount: Number(o.advanceAmount),
         advancePaid: o.advancePaid ? 'Yes' : 'No',
@@ -378,6 +390,9 @@ export class AdminOrdersService {
       doc.text(`Subtotal: Rs. ${Number(order.subtotal).toFixed(2)}`);
       doc.text(`GST: Rs. ${Number(order.gstAmount).toFixed(2)}`);
       doc.text(`Shipping: Rs. ${Number(order.shippingAmount).toFixed(2)}`);
+      if (order.discountAmount) {
+        doc.text(`Discount${order.couponCode ? ` (${order.couponCode})` : ''}: -Rs. ${Number(order.discountAmount).toFixed(2)}`);
+      }
       doc.moveDown(0.5);
       doc.fontSize(13).text(`Total: Rs. ${Number(order.totalAmount).toFixed(2)}`, { underline: true });
 

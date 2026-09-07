@@ -1,4 +1,6 @@
 import {
+  BeforeInsert,
+  BeforeUpdate,
   Column,
   CreateDateColumn,
   Entity,
@@ -73,4 +75,16 @@ export class Coupon {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  /**
+   * Every lookup (validate/cart/checkout) matches on code.toUpperCase() — force
+   * it uppercase on every save so a mixed-case code can never be persisted and
+   * silently become unusable by the customer, regardless of which code path
+   * created/updated it.
+   */
+  @BeforeInsert()
+  @BeforeUpdate()
+  normalizeCode() {
+    if (this.code) this.code = this.code.toUpperCase();
+  }
 }

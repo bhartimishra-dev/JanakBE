@@ -28,11 +28,16 @@ export class AdminCouponsService {
     });
   }
 
+  /**
+   * Uppercased throughout — every coupon lookup (validate/cart/checkout) matches
+   * on code.toUpperCase(), so a mixed-case stored code would be permanently
+   * unusable by the customer despite looking valid everywhere in the admin panel.
+   */
   private buildSuggestedCode(customerName: string): string {
     const abbrev =
       customerName.trim().split(/\s+/)[0]?.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || 'CUST';
     const digits = String(Math.floor(100000 + Math.random() * 900000));
-    return `Jnk-${abbrev}-${digits}`;
+    return `JNK-${abbrev}-${digits}`;
   }
 
   private async getCustomerNameForQuote(quote: Quote): Promise<string> {

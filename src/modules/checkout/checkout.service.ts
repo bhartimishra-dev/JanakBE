@@ -113,6 +113,8 @@ export class CheckoutService {
         subtotal,
         gstAmount,
         shippingAmount,
+        discountAmount,
+        couponCode: coupon?.code,
         totalAmount,
         advanceAmount,
         balanceAmount,

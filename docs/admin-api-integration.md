@@ -342,6 +342,8 @@ Base path: `/admin/orders`
       "orderStatus": "advance_paid",
       "paymentStatus": { "advancePaid": true, "balancePaid": false },
       "deliveryAddress": "123 Main St, Dehradun, Uttarakhand, 248001",
+      "discountAmount": 500,
+      "couponCode": "SAVE500",
       "totalAmount": 500000,
       "createdAt": "...",
       "items": [
@@ -359,13 +361,15 @@ Base path: `/admin/orders`
 Same query params as the list endpoint (`tab`, `search`, `from`, `to`, `status`) but **unpaginated** — every matching row is exported, not just the current page. Returns an `.xlsx` file (`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment`), not the usual JSON envelope. Order-list-shaped columns (customer, status, booking/total amount, delivery address) — for a financial/invoice breakdown instead, see `export/invoices-excel` below.
 
 ### `GET /admin/orders/export/invoices-excel`
-Query params: `from`, `to` (`YYYY-MM-DD` — the main filter for this one), plus `tab`/`status` for consistency. Also unpaginated, also an `.xlsx` file. Columns are invoice/financial-detail focused rather than order-list focused: Order ID, Invoice Date, Customer Name/Email/Contact, **GSTIN** (from `CompanyProfile`), Subtotal, GST, Shipping, Total, Advance Amount + paid?, Balance Amount + paid?, Payment Method, Transaction ID, Status. Meant for accounting reconciliation over a date range rather than an operational orders list.
+Query params: `from`, `to` (`YYYY-MM-DD` — the main filter for this one), plus `tab`/`status` for consistency. Also unpaginated, also an `.xlsx` file. Columns are invoice/financial-detail focused rather than order-list focused: Order ID, Invoice Date, Customer Name/Email/Contact, **GSTIN** (from `CompanyProfile`), Subtotal, GST, Shipping, **Discount, Coupon Code**, Total, Advance Amount + paid?, Balance Amount + paid?, Payment Method, Transaction ID, Status. Meant for accounting reconciliation over a date range rather than an operational orders list.
 
 ### `GET /admin/orders/:id`
 Accepts either the UUID **or** the human `orderId` (e.g. `JP-2026-00001`) in the path. Returns the full `Order` entity with `user`, `items.product.images`, `tracking`.
 
 ### `GET /admin/orders/:id/invoice`
-Same `:id` matching (UUID or `JP-2026-00001`-style). Returns a PDF invoice (`Content-Type: application/pdf`, `Content-Disposition: attachment`) — order details, bill-to (from `CompanyProfile`/shipping address), line items, subtotal/GST/shipping/total, and advance/balance payment status. Amounts are rendered as `Rs. 1234.00` rather than `₹` — PDFKit's standard fonts don't include the ₹ glyph and silently render it as a garbled character, so this avoids that rather than shipping broken invoices.
+Same `:id` matching (UUID or `JP-2026-00001`-style). Returns a PDF invoice (`Content-Type: application/pdf`, `Content-Disposition: attachment`) — order details, bill-to (from `CompanyProfile`/shipping address), line items, subtotal/GST/shipping/**discount (if a coupon was applied)**/total, and advance/balance payment status. Amounts are rendered as `Rs. 1234.00` rather than `₹` — PDFKit's standard fonts don't include the ₹ glyph and silently render it as a garbled character, so this avoids that rather than shipping broken invoices.
+
+> **Fixed**: `Order.discountAmount`/`Order.couponCode` didn't exist until now — a discounted order's invoice used to show `Subtotal + GST + Shipping ≠ Total` with no explanation (the coupon discount was applied to `totalAmount` at checkout but never persisted anywhere on the order itself). Both the invoice PDF and `export/invoices-excel` now show the discount and which coupon was used; the order-list endpoints (`GET /admin/orders`, `export/excel`) also return `discountAmount`/`couponCode` per order.
 
 ### `PATCH /admin/orders/:id/status`
 ```json
@@ -502,9 +506,9 @@ No pagination — returns the full list, newest first.
 ### `GET /admin/coupons/suggest-code?quoteId=<uuid>`
 Powers the "Regenerate" button on the quote-linked coupon form. **Not persisted** — call again for a new suggestion.
 ```json
-{ "code": "Jnk-NHAI-321709" }
+{ "code": "JNK-NHAI-321709" }
 ```
-Format: `Jnk-<first word of customer/company name, uppercased>-<6 digits>`.
+Format: `JNK-<first word of customer/company name, uppercased>-<6 digits>` — fully uppercase. (A prior version of this generator produced mixed-case codes like `Jnk-NHAI-321709`, which meant the coupon was silently unusable — every lookup matches on `code.toUpperCase()`. Fixed both in the generator and with a `@BeforeInsert`/`@BeforeUpdate` normalizer on the entity itself, so a mixed-case code can no longer be persisted from any code path. If you have any coupons predating this fix, check `SELECT code FROM coupons WHERE code != UPPER(code)` and re-save them.)
 
 ### `POST /admin/coupons`
 
@@ -590,6 +594,10 @@ Same body, all fields optional (`Partial<CreateCouponDto>`).
 
 ### Where the discount actually applies
 `POST /coupons/validate` (public), `POST /cart/coupon`, and `POST /checkout/place-order` all now branch on `discountType`/`maxDiscountAmount`/`additionalDiscountType` consistently. A coupon scoped to a `user` returns `400 "This coupon is not valid for your account"` for anyone else; below `minimumOrderValue` returns a `400` naming the required minimum.
+
+`POST /coupons/validate`'s response also includes `maxDiscountAmount`, `additionalDiscountType`, `isPublic`, and `freeProduct` (`{ id, name } | null`) now — previously only `code`/`discountType`/`discountValue`/`discountPercent`/`minimumOrderValue` came back, which meant a `free_item` coupon validated successfully but didn't tell the frontend *which* product was free.
+
+> **Fixed**: `validate()` didn't check the `user` restriction at all before — a quote-linked/private coupon would validate as "success" for any logged-in user, then get rejected later at `cart/coupon` or checkout for a reason `validate` never surfaced. Also fixed: the `suggest-code` generator produced mixed-case codes (`Jnk-NHAI-321709`) while every lookup matches on `code.toUpperCase()` — meaning **no quote-linked coupon was ever actually usable by a customer**. Codes are now generated uppercase, and `Coupon` has a `@BeforeInsert`/`@BeforeUpdate` hook that force-uppercases `code` on every save regardless of code path, so this can't silently regress. If any coupons predate this fix, find them with `SELECT code FROM coupons WHERE code != UPPER(code)` on the server and re-save them (a `PATCH` with the same `code` value is enough — the hook normalizes it).
 
 > **Not built**: actual fulfillment of the free item at checkout (adding it as a ₹0 line item to the order) — only the discount math and data model exist so far.
 
