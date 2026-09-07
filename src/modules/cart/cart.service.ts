@@ -34,7 +34,7 @@ export class CartService {
   private async getOrCreateCart(user: User): Promise<Cart> {
     let cart = await this.cartRepository.findOne({
       where: { user: { id: user.id } },
-      relations: { items: { product: { images: true } }, savedItems: { product: true } },
+      relations: { items: { product: { images: true } }, savedItems: { product: true }, coupon: true },
     });
     if (!cart) {
       cart = this.cartRepository.create({ user });
@@ -48,7 +48,7 @@ export class CartService {
   private async getOrCreateGuestCart(guestId: string): Promise<Cart> {
     let cart = await this.cartRepository.findOne({
       where: { guestId },
-      relations: { items: { product: { images: true } }, savedItems: { product: true } },
+      relations: { items: { product: { images: true } }, savedItems: { product: true }, coupon: true },
     });
     if (!cart) {
       cart = this.cartRepository.create({ guestId, user: null });
@@ -139,9 +139,35 @@ export class CartService {
     return { subtotal, gstAmount, discountAmount, shippingAmount, totalAmount, advanceAmount, balanceAmount };
   }
 
+  /** The cart's persisted coupon, or null if none applied / it's since expired or been deactivated. */
+  private getValidCoupon(cart: Cart): Coupon | null {
+    const coupon = cart.coupon;
+    if (!coupon) return null;
+    if (!coupon.isActive) return null;
+    if (coupon.expiresAt && coupon.expiresAt < new Date()) return null;
+    return coupon;
+  }
+
+  private formatCoupon(coupon: Coupon) {
+    return {
+      code: coupon.code,
+      discountType: coupon.discountType,
+      discountValue: coupon.discountValue,
+      discountPercent: coupon.discountPercent,
+      maxDiscountAmount: coupon.maxDiscountAmount,
+      additionalDiscountType: coupon.additionalDiscountType,
+    };
+  }
+
   async getCart(user: User) {
     const cart = await this.getOrCreateCart(user);
-    return { ...cart, summary: this.buildSummary(cart) };
+    const coupon = this.getValidCoupon(cart);
+    const { coupon: _rawCoupon, ...cartRest } = cart;
+    return {
+      ...cartRest,
+      coupon: coupon ? this.formatCoupon(coupon) : null,
+      summary: this.buildSummary(cart, coupon),
+    };
   }
 
   async addItem(user: User, dto: AddCartItemDto) {
@@ -180,6 +206,10 @@ export class CartService {
   async clearCart(user: User) {
     const cart = await this.getOrCreateCart(user);
     await this.cartItemRepository.remove(cart.items);
+    if (cart.coupon) {
+      cart.coupon = null;
+      await this.cartRepository.save(cart);
+    }
     return { message: 'Cart cleared' };
   }
 
@@ -200,17 +230,20 @@ export class CartService {
     if (coupon.minimumOrderValue != null && subtotal < Number(coupon.minimumOrderValue)) {
       throw new BadRequestException(`Minimum order value of ₹${coupon.minimumOrderValue} required for this coupon`);
     }
-    return {
-      ...this.buildSummary(cart, coupon),
-      coupon: {
-        code: coupon.code,
-        discountType: coupon.discountType,
-        discountValue: coupon.discountValue,
-        discountPercent: coupon.discountPercent,
-        maxDiscountAmount: coupon.maxDiscountAmount,
-        additionalDiscountType: coupon.additionalDiscountType,
-      },
-    };
+    // Persist the applied coupon onto the cart itself — otherwise it only
+    // ever existed in this one response, and the very next GET /cart (or any
+    // add/update/remove item call, which all re-fetch the cart) would show
+    // discountAmount: 0 again.
+    cart.coupon = coupon;
+    await this.cartRepository.save(cart);
+    return this.getCart(user);
+  }
+
+  async removeCoupon(user: User) {
+    const cart = await this.getOrCreateCart(user);
+    cart.coupon = null;
+    await this.cartRepository.save(cart);
+    return this.getCart(user);
   }
 
   async saveForLater(user: User, itemId: string) {

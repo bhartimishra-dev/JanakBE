@@ -599,6 +599,17 @@ Same body, all fields optional (`Partial<CreateCouponDto>`).
 
 > **Fixed**: `validate()` didn't check the `user` restriction at all before — a quote-linked/private coupon would validate as "success" for any logged-in user, then get rejected later at `cart/coupon` or checkout for a reason `validate` never surfaced. Also fixed: the `suggest-code` generator produced mixed-case codes (`Jnk-NHAI-321709`) while every lookup matches on `code.toUpperCase()` — meaning **no quote-linked coupon was ever actually usable by a customer**. Codes are now generated uppercase, and `Coupon` has a `@BeforeInsert`/`@BeforeUpdate` hook that force-uppercases `code` on every save regardless of code path, so this can't silently regress. If any coupons predate this fix, find them with `SELECT code FROM coupons WHERE code != UPPER(code)` on the server and re-save them (a `PATCH` with the same `code` value is enough — the hook normalizes it).
 
+> **Fixed**: applying a coupon didn't stick to the cart at all. `POST /cart/coupon` computed and returned a discount for that one response only — it was never saved anywhere, so `discountAmount` was always `0` on a plain `GET /cart`, or after adding/updating/removing any item (all of which internally re-fetch the cart), or on `POST /checkout/initiate`. Calling `POST /coupons/validate` never touched the cart either way, which is why validate could show a discount while the cart showed none.
+>
+> Fixed by persisting the applied coupon on the `Cart` entity itself:
+> - `POST /cart/coupon` now saves the coupon onto the cart, not just onto its own response.
+> - `GET /cart` now returns a `coupon` field (`null` if none applied) and `summary.discountAmount` reflects it automatically — no need to re-apply after every fetch or every cart mutation.
+> - New: `DELETE /cart/coupon` removes whatever coupon is currently applied.
+> - `POST /checkout/initiate` and `POST /checkout/place-order` both honor the cart's persisted coupon automatically now. `place-order`'s `couponCode` body field still works and takes priority if sent — it's just no longer *required* to repeat the code you already applied to the cart. The coupon is cleared from the cart once the order is placed.
+> - If a coupon on the cart has since expired or been deactivated, it's treated as if none were applied (`discountAmount: 0`, `coupon: null`) rather than erroring — it isn't auto-removed from the cart row, so it'll show again if it's ever reactivated before checkout.
+>
+> `POST /cart/coupon`'s response shape changed slightly as part of this — it now returns the same shape as `GET /cart` (full cart + `summary` + `coupon`) instead of a bespoke `{ ...summary, coupon }` object with no items. Read `coupon`/`summary` the same way either response; just don't rely on the old response *lacking* an `items` field.
+
 > **Not built**: actual fulfillment of the free item at checkout (adding it as a ₹0 line item to the order) — only the discount math and data model exist so far.
 
 ---

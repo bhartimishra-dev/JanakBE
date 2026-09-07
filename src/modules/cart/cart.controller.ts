@@ -51,6 +51,12 @@ export class CartController {
     return this.cartService.applyCoupon(user, dto.code);
   }
 
+  @Delete('coupon')
+  @ApiOperation({ summary: 'Remove the coupon currently applied to the cart' })
+  removeCoupon(@CurrentUser() user: User) {
+    return this.cartService.removeCoupon(user);
+  }
+
   @Post('save-for-later/:id')
   @ApiOperation({ summary: 'Save cart item for later' })
   saveForLater(@CurrentUser() user: User, @Param('id') id: string) {

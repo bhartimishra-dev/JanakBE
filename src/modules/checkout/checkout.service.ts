@@ -36,7 +36,7 @@ export class CheckoutService {
   async initiate(user: User) {
     const cart = await this.cartRepository.findOne({
       where: { user: { id: user.id } },
-      relations: { items: { product: true } },
+      relations: { items: { product: true }, coupon: true },
     });
     if (!cart || !cart.items.length) throw new BadRequestException('Cart is empty');
 
@@ -44,19 +44,33 @@ export class CheckoutService {
       (sum, item) => sum + Number(item.product.price) * item.quantity,
       0,
     );
-    const { gstAmount, totalAmount } = calculateGst(subtotal);
+    const { gstAmount } = calculateGst(subtotal);
+    // Same coupon persisted on the cart via POST /cart/coupon applies here too,
+    // so this preview matches what GET /cart and the eventual order will show.
+    const coupon = this.activeCartCoupon(cart);
+    const discountAmount = calculateCouponDiscount(coupon, subtotal);
     const shippingAmount = subtotal >= 50000 ? 0 : 500;
+    const totalAmount = subtotal + gstAmount - discountAmount + shippingAmount;
 
     return {
       items: cart.items,
-      summary: { subtotal, gstAmount, shippingAmount, totalAmount: totalAmount + shippingAmount },
+      summary: { subtotal, gstAmount, discountAmount, couponCode: coupon?.code ?? null, shippingAmount, totalAmount },
     };
+  }
+
+  /** The cart's persisted coupon, or null if none applied / it's since expired or been deactivated. */
+  private activeCartCoupon(cart: Cart): Coupon | null {
+    const coupon = cart.coupon;
+    if (!coupon) return null;
+    if (!coupon.isActive) return null;
+    if (coupon.expiresAt && coupon.expiresAt < new Date()) return null;
+    return coupon;
   }
 
   async placeOrder(user: User, dto: PlaceOrderDto) {
     const cart = await this.cartRepository.findOne({
       where: { user: { id: user.id } },
-      relations: { items: { product: true } },
+      relations: { items: { product: true }, coupon: true },
     });
     if (!cart || !cart.items.length) throw new BadRequestException('Cart is empty');
 
@@ -65,10 +79,15 @@ export class CheckoutService {
     });
     if (!address) throw new NotFoundException('Address not found');
 
+    // An explicit couponCode in the request wins; otherwise fall back to
+    // whatever coupon is already applied/persisted on the cart (from
+    // POST /cart/coupon) so checkout honors it without the frontend having
+    // to resend the code it already applied.
+    const couponCode = dto.couponCode ?? this.activeCartCoupon(cart)?.code;
     let coupon: Coupon | null = null;
-    if (dto.couponCode) {
+    if (couponCode) {
       coupon = await this.couponRepository.findOne({
-        where: { code: dto.couponCode.toUpperCase(), isActive: true },
+        where: { code: couponCode.toUpperCase(), isActive: true },
         relations: { user: true },
       });
       if (!coupon) throw new BadRequestException('Invalid or expired coupon');
@@ -155,6 +174,7 @@ export class CheckoutService {
       await manager.save(tracking);
 
       await manager.delete('cart_items', { cart: { id: cart.id } });
+      await manager.update(Cart, { id: cart.id }, { coupon: null });
 
       if (coupon) {
         await manager.update(Coupon, { id: coupon.id }, { isActive: false });
