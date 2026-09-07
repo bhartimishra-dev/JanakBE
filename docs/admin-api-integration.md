@@ -592,6 +592,31 @@ Same body, all fields optional (`Partial<CreateCouponDto>`).
 ### `DELETE /admin/coupons/:id`
 `{ "message": "Coupon deleted" }`
 
+### `GET /coupons` — customer-facing, for an "available offers" list
+New endpoint. Requires auth (`Authorization: Bearer <JWT>`, any logged-in customer). Returns every coupon the current user could actually apply right now:
+- All active, non-expired coupons with `isPublic: true`
+- Plus any active, non-expired `isPublic: false` coupon whose `user` is this customer (e.g. a quote-linked coupon) — nobody else's private coupons are ever included
+- Already-expired or deactivated coupons are silently excluded (not returned with a flag — just absent)
+
+Response is an array, same per-coupon shape as `validate`'s response minus `code` validity (there's no `400` case here — an empty array just means no offers apply):
+```json
+[
+  {
+    "code": "SAVE10",
+    "discountType": "percentage",
+    "discountValue": "10.00",
+    "discountPercent": "10.00",
+    "maxDiscountAmount": null,
+    "additionalDiscountType": null,
+    "minimumOrderValue": null,
+    "isPublic": true,
+    "expiresAt": null,
+    "freeProduct": null
+  }
+]
+```
+Note this is separate from `GET /admin/coupons`, which is admin-only and returns literally every coupon (including other customers' private ones and inactive/expired ones) for management purposes.
+
 ### Where the discount actually applies
 `POST /coupons/validate` (public), `POST /cart/coupon`, and `POST /checkout/place-order` all now branch on `discountType`/`maxDiscountAmount`/`additionalDiscountType` consistently. A coupon scoped to a `user` returns `400 "This coupon is not valid for your account"` for anyone else; below `minimumOrderValue` returns a `400` naming the required minimum.
 

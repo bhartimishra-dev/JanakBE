@@ -12,8 +12,38 @@ export class CouponsService {
     private couponsRepository: Repository<Coupon>,
   ) {}
 
-  async findAll() {
-    return this.couponsRepository.find({ order: { createdAt: 'DESC' } });
+  /**
+   * Coupons a customer can actually use right now: active, non-expired, and
+   * either public or privately scoped to this user (e.g. a quote-linked
+   * coupon). Excludes anyone else's private coupons.
+   */
+  async findAvailable(user: User) {
+    const coupons = await this.couponsRepository.find({
+      where: [
+        { isActive: true, isPublic: true },
+        { isActive: true, isPublic: false, user: { id: user.id } },
+      ],
+      relations: { freeProduct: true },
+      order: { createdAt: 'DESC' },
+    });
+
+    const now = new Date();
+    return coupons
+      .filter((coupon) => !coupon.expiresAt || coupon.expiresAt >= now)
+      .map((coupon) => ({
+        code: coupon.code,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        discountPercent: coupon.discountPercent,
+        maxDiscountAmount: coupon.maxDiscountAmount,
+        additionalDiscountType: coupon.additionalDiscountType,
+        minimumOrderValue: coupon.minimumOrderValue,
+        isPublic: coupon.isPublic,
+        expiresAt: coupon.expiresAt,
+        freeProduct: coupon.freeProduct
+          ? { id: coupon.freeProduct.id, name: coupon.freeProduct.name }
+          : null,
+      }));
   }
 
   async create(dto: CreateCouponDto) {
