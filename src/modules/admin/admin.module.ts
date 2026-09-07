@@ -33,6 +33,8 @@ import { AdminCategoriesController } from './categories/admin-categories.control
 import { AdminCategoriesService } from './categories/admin-categories.service';
 import { AdminQuotesController } from './quotes/admin-quotes.controller';
 import { AdminQuotesService } from './quotes/admin-quotes.service';
+import { AdminBrandsController } from './brands/admin-brands.controller';
+import { AdminBrandsService } from './brands/admin-brands.service';
 
 @Module({
   imports: [
@@ -55,6 +57,7 @@ import { AdminQuotesService } from './quotes/admin-quotes.service';
     AdminUsersController,
     AdminCategoriesController,
     AdminQuotesController,
+    AdminBrandsController,
   ],
   providers: [
     AdminDashboardService,
@@ -64,6 +67,7 @@ import { AdminQuotesService } from './quotes/admin-quotes.service';
     AdminUsersService,
     AdminCategoriesService,
     AdminQuotesService,
+    AdminBrandsService,
   ],
 })
 export class AdminModule {}

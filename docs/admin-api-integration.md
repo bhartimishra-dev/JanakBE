@@ -53,6 +53,7 @@ Every list endpoint that supports paging returns the array under a named key plu
 6. [Coupons](#6-coupons)
 7. [Users & Activity](#7-users--activity)
 8. [API Logs](#8-api-logs)
+9. [Brands](#9-brands)
 
 ---
 
@@ -685,6 +686,36 @@ Base path: `/admin/logs`
 
 ### `GET /admin/logs/:id`
 Single `ApiLog` entity, or `null` if not found (this one doesn't 404 — check for `null`).
+
+---
+
+## 9. Brands
+
+Base path: `/admin/brands`. Simple CRUD — a brand is just `name` (+ auto `slug`), with optional `logo`/`isActive`.
+
+### `GET /admin/brands`
+Query: `search` (optional, matches `name`). No pagination — returns the full list, ordered by name.
+
+### `GET /admin/brands/:id`
+Single brand.
+
+### `POST /admin/brands`
+```json
+{ "name": "JANAK", "logo": "https://...", "isActive": true }
+```
+Only `name` is required. `slug` is derived from `name` server-side — don't send it.
+
+### `PATCH /admin/brands/:id`
+Same body, all fields optional.
+
+### `DELETE /admin/brands/:id`
+```json
+{ "message": "Brand deleted" }
+```
+Deleting a brand that still has products assigned to it is rejected with a clean `409` (same pattern as category delete):
+```json
+{ "statusCode": 409, "message": "Cannot delete \"JANAK\" — one or more products still reference this brand. Move or delete them first." }
+```
 
 ---
 
