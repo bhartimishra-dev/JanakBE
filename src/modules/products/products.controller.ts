@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { User } from '../users/entities/user.entity';
@@ -22,15 +22,17 @@ export class ProductsController {
   @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Get product detail by ID' })
-  findOne(@Param('id') id: string) {
-    return this.productsService.findOne(id);
+  @ApiQuery({ name: 'platform', enum: ['website', 'app'], required: false })
+  findOne(@Param('id') id: string, @Query('platform') platform?: 'website' | 'app') {
+    return this.productsService.findOne(id, platform);
   }
 
   @Public()
   @Get(':id/related')
   @ApiOperation({ summary: 'Get related products' })
-  findRelated(@Param('id') id: string) {
-    return this.productsService.findRelated(id);
+  @ApiQuery({ name: 'platform', enum: ['website', 'app'], required: false })
+  findRelated(@Param('id') id: string, @Query('platform') platform?: 'website' | 'app') {
+    return this.productsService.findRelated(id, platform);
   }
 
   @Public()

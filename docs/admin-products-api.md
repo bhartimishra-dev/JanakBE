@@ -138,6 +138,16 @@ produced:
 
 `productCode` (e.g. `Jnk26-0008419`) and `slug` are generated server-side — never send them.
 
+### `showOnWebsite` / `showOnApp` actually control the public storefront now
+
+These flags are enforced on the **public, customer-facing** product endpoints (`GET /products`, `GET /products/:id`, `GET /products/:id/related` — not under `/admin`) via an optional `?platform=website|app` query param:
+
+- `GET /products?platform=website` — only products with `showOnWebsite: true`
+- `GET /products?platform=app` — only products with `showOnApp: true`
+- Omit `platform` entirely and both flags are ignored (returns everything, `isActive` permitting) — this is the existing behavior, unchanged, for any caller not yet passing the param.
+
+The website frontend should call every product endpoint with `platform=website`; the mobile app should always pass `platform=app`. This also applies to direct detail lookups — `GET /products/:id?platform=app` returns `404` for a product with `showOnApp: false`, not just omitting it from list results, so a hidden product can't be reached by guessing/deep-linking its id either.
+
 **`images[]` entry**: `{ "url": "string (required)", "name"?: "string", "type"?: "image"|"video" (default image), "isPrimary"?: boolean, "sortOrder"?: number }`
 
 **`specs[]` entry**: `{ "key": "string (required)", "value": "string (required)", "sortOrder"?: number }` — both `key` and `value` are required; don't send a partial row.
