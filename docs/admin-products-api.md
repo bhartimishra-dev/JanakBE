@@ -130,6 +130,7 @@ produced:
 | `keySpecification` | no | string, ≤500 chars | Free-text spec block |
 | `originalPrice` | no | number | MRP shown struck through |
 | `modelNumber` | no | string | |
+| `hsnCode` | no | string | GST HSN/SAC code, e.g. `"9015"`. Shown on the order invoice's line-item and HSN-summary tables — see the `GET /admin/orders/:id/invoice` section in `admin-api-integration.md`. Snapshotted onto the order item at checkout, so it's safe to correct later without affecting past invoices. Left unset, invoices print `—` for that product. |
 | `salesRepName` / `salesRepPhone` | no | string | |
 | `isFeatured` / `isNewArrival` / `showOnWebsite` / `showOnApp` | no | boolean | |
 | `images` | no | array | See below |

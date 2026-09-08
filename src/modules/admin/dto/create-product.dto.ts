@@ -56,6 +56,10 @@ export class CreateProductDto {
   @ApiProperty({ description: 'Listing / selling price' }) @IsNumber() price: number;
   @ApiProperty({ enum: StockStatus }) @IsEnum(StockStatus) stockStatus: StockStatus;
   @ApiPropertyOptional() @IsOptional() @IsString() modelNumber?: string;
+  @ApiPropertyOptional({ description: 'GST HSN/SAC code, e.g. "9015". Shown on the tax invoice — leave unset and the invoice prints "—" for that line.' })
+  @IsOptional()
+  @IsString()
+  hsnCode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() salesRepName?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() salesRepPhone?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isFeatured?: boolean;

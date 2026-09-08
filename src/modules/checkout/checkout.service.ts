@@ -160,6 +160,7 @@ export class CheckoutService {
           order,
           product: item.product,
           productName: item.product.name,
+          hsnCode: item.product.hsnCode,
           quantity: item.quantity,
           unitPrice: item.product.price,
           totalPrice: Number(item.product.price) * item.quantity,

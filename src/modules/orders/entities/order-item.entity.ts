@@ -25,6 +25,10 @@ export class OrderItem {
   @Column()
   productName: string; // snapshot
 
+  /** Snapshot of the product's HSN/SAC code at order time, for the tax invoice. */
+  @Column({ nullable: true })
+  hsnCode: string;
+
   @ManyToOne(() => Order, (order) => order.items, { onDelete: 'CASCADE' })
   @JoinColumn()
   order: Order;

@@ -55,6 +55,10 @@ export class Product {
   @Column({ nullable: true })
   modelNumber: string;
 
+  /** GST HSN/SAC code — required on the tax invoice's line-item and HSN-summary tables. */
+  @Column({ nullable: true })
+  hsnCode: string;
+
   @Column({ nullable: true })
   salesRepName: string;
 
