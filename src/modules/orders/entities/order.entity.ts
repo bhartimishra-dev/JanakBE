@@ -41,6 +41,15 @@ export class Order {
   @Column({ nullable: true })
   couponCode: string;
 
+  /**
+   * Absolute URL of the invoice PDF generated and stored at order-placement
+   * time — an immutable historical record, not regenerated on every
+   * download. Null for orders placed before this existed; the download
+   * endpoint falls back to generating (and backfilling) one on first request.
+   */
+  @Column({ nullable: true })
+  invoiceUrl: string;
+
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   totalAmount: number;
 

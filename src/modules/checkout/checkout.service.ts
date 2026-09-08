@@ -5,8 +5,11 @@ import { DataSource, Repository } from 'typeorm';
 import { calculateCouponDiscount } from '../../common/utils/coupon-discount.util';
 import { calculateGst } from '../../common/utils/gst.util';
 import { generateOrderId } from '../../common/utils/order-id.util';
+import { renderInvoicePdfBuffer } from '../../common/utils/invoice-pdf.util';
+import { getInvoiceRelativePath, saveInvoiceFile } from '../../common/utils/invoice-storage.util';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { Address } from '../addresses/entities/address.entity';
+import { CompanyProfile } from '../company-profile/entities/company-profile.entity';
 import { Coupon } from '../coupons/entities/coupon.entity';
 import { OrderItem } from '../orders/entities/order-item.entity';
 import { OrderTracking } from '../orders/entities/order-tracking.entity';
@@ -28,6 +31,8 @@ export class CheckoutService {
     private orderRepository: Repository<Order>,
     @InjectRepository(Coupon)
     private couponRepository: Repository<Coupon>,
+    @InjectRepository(CompanyProfile)
+    private companyProfileRepository: Repository<CompanyProfile>,
     private dataSource: DataSource,
     private notificationsService: NotificationsService,
     private configService: ConfigService,
@@ -181,8 +186,30 @@ export class CheckoutService {
         await manager.update(Coupon, { id: coupon.id }, { isActive: false });
       }
 
+      // manager.save(order) above doesn't populate the relation back onto
+      // the entity — attach it in memory so the invoice can be rendered
+      // right after without a second DB round-trip to reload items+product.
+      order.items = orderItems;
       return order;
     });
+
+    // Generate the permanent invoice PDF now, at order-placement time, so it's
+    // an immutable historical record rather than rebuilt from (potentially
+    // later-changed) data on every future download. Best-effort: a failure
+    // here must not fail the order that was already successfully placed —
+    // GET /admin/orders/:id/invoice falls back to generating one live (and
+    // backfilling it) if this didn't leave a stored copy.
+    try {
+      const profile = await this.companyProfileRepository.findOne({ where: { user: { id: user.id } } });
+      const buffer = await renderInvoicePdfBuffer(result, profile);
+      await saveInvoiceFile(result.id, buffer);
+      const baseUrl = this.configService.get<string>('APP_URL', 'http://localhost:3001');
+      const invoiceUrl = `${baseUrl}${getInvoiceRelativePath(result.id)}`;
+      await this.orderRepository.update(result.id, { invoiceUrl });
+      result.invoiceUrl = invoiceUrl;
+    } catch (err) {
+      console.error(`Failed to generate/store invoice for order ${result.orderId}:`, err);
+    }
 
     const neftDetails = !isFullPayment
       ? {
@@ -215,6 +242,7 @@ export class CheckoutService {
     return {
       orderId: result.orderId,
       id: result.id,
+      invoiceUrl: result.invoiceUrl ?? null,
       totalAmount: result.totalAmount,
       advanceAmount,
       balanceAmount,
