@@ -22,15 +22,23 @@ async function bootstrap() {
     }),
   );
 
+  // A trailing slash in FRONTEND_URL (e.g. "https://foo.vercel.app/") is a
+  // one-character typo that silently CORS-blocks that origin forever — a
+  // real browser's Origin header never has a trailing slash (it's just
+  // scheme+host+port, no path), so an exact-match comparison against a
+  // slash-terminated allowlist entry never succeeds. Stripped on both sides
+  // so this can't recur from a future copy-paste.
+  const stripTrailingSlash = (url: string) => url.replace(/\/+$/, '');
   const allowedOrigins = (process.env.FRONTEND_URL ?? 'http://localhost:3000')
     .split(',')
-    .map((o) => o.trim());
+    .map((o) => stripTrailingSlash(o.trim()));
 
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       const isDev = process.env.NODE_ENV === 'development';
       const isLocalhost = origin && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
-      if (!origin || allowedOrigins.includes(origin) || (isDev && isLocalhost)) {
+      const normalizedOrigin = stripTrailingSlash(origin ?? '');
+      if (!origin || allowedOrigins.includes(normalizedOrigin) || (isDev && isLocalhost)) {
         callback(null, true);
       } else {
         // Reject cleanly (no CORS headers, no thrown error) rather than surfacing
