@@ -76,7 +76,14 @@ export class AdminProductsService {
       .orderBy('p.updatedAt', 'DESC');
 
     if (search) {
-      qb.andWhere('(p.name ILIKE :search OR p.modelNumber ILIKE :search)', { search: `%${search}%` });
+      // "Product ID" in the admin table shows productCode when set, else the
+      // raw id — so a search box advertised as "name or product ID" has to
+      // match both, not just name/modelNumber, or searching by whichever id
+      // is actually on screen returns nothing.
+      qb.andWhere(
+        '(p.name ILIKE :search OR p.modelNumber ILIKE :search OR p.productCode ILIKE :search OR CAST(p.id AS text) ILIKE :search)',
+        { search: `%${search}%` },
+      );
     }
     if (categoryId) {
       qb.andWhere('category.id = :categoryId', { categoryId });
