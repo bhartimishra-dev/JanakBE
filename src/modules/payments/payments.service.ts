@@ -138,6 +138,8 @@ export class PaymentsService {
           metadata: { amount: txn.amount, transactionId: payload.txnID },
         });
       }
+    } else {
+      await this.cancelOrderForFailedPayment(txn.order);
     }
 
     this.logger.log(
@@ -205,6 +207,7 @@ export class PaymentsService {
   async checkStatus(merchantTxnNo: string, user: User) {
     const txn = await this.txnRepository.findOne({
       where: { merchantTxnNo, user: { id: user.id } },
+      relations: { order: { user: true } },
     });
 
     if (!txn) throw new NotFoundException('Transaction not found');
@@ -217,9 +220,38 @@ export class PaymentsService {
       txn.responseCode = iciciStatus.responseCode;
       txn.txnResponseCode = iciciStatus.txnResponseCode;
       await this.txnRepository.save(txn);
+      if (!isSuccess) {
+        await this.cancelOrderForFailedPayment(txn.order);
+      }
     }
 
     return { localStatus: txn.status, iciciResponse: iciciStatus };
+  }
+
+  /**
+   * Marks an order CANCELLED after its advance-payment attempt definitively
+   * failed — previously nothing happened to the order at all on failure, so
+   * it just sat at pending_advance_payment forever with no way for the
+   * customer to tell it hadn't gone through short of trying to pay again.
+   *
+   * Guarded to only act while the order is still pending_advance_payment, so
+   * a stale/duplicate/out-of-order failure callback (a well-known payment
+   * gateway integration hazard) can never downgrade an order that a *later*
+   * retry attempt already paid successfully.
+   */
+  private async cancelOrderForFailedPayment(order: Order): Promise<void> {
+    if (order.status !== OrderStatus.PENDING_ADVANCE_PAYMENT) return;
+
+    await this.orderRepository.update(order.id, { status: OrderStatus.CANCELLED });
+
+    if (order.user) {
+      await this.notificationsService.create(order.user, {
+        title: 'Payment Failed — Order Cancelled',
+        message: `Your advance payment for order ${order.orderId} could not be completed, so the order has been cancelled. Please place a new order to try again.`,
+        type: NotificationType.PAYMENT_FAILED,
+        orderId: order.orderId,
+      });
+    }
   }
 
   async getMyTransactions(user: User) {

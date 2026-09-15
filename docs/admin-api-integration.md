@@ -415,6 +415,14 @@ Marks `advancePaid: true`, status → `advance_paid`, notifies the customer.
 ### `PATCH /admin/orders/:id/confirm-balance-neft`
 Same body shape. Marks `balancePaid: true`, status → `balance_paid`, notifies the customer.
 
+### What happens when the advance payment isn't completed
+Two separate mechanisms, both landing the order on `cancelled` — previously **neither existed**: a failed/abandoned advance payment just left the order at `pending_advance_payment` forever, with `OrderStatus.CANCELLED` never actually set anywhere in the codebase.
+
+- **Gateway reports failure**: as soon as the ICICI callback (`POST /payments/callback`) or a status poll (`GET /payments/status/:merchantTxnNo`) reports the advance payment failed, the order is immediately marked `cancelled` and the customer gets a "Payment Failed — Order Cancelled" notification. Guarded so a stale/duplicate/out-of-order callback (a known payment-gateway hazard) can never cancel an order a *later* retry already paid for — it only acts while the order is still `pending_advance_payment`.
+- **Customer never attempts payment at all**: an hourly job (`OrderCleanupService`, `@nestjs/schedule`) auto-cancels any order still sitting at `pending_advance_payment` past `ORDER_ABANDON_TIMEOUT_HOURS` (env var, default `24`), notifying the customer the same way.
+
+**By design, the cart is *not* restored/preserved for either case** — the order itself is the reservation, not the cart (which is already cleared at `place-order` time, before payment is even attempted). A customer whose payment fails can retry immediately by calling `POST /payments/initiate` again with the same `orderId` — *while* it's still `pending_advance_payment`; once cancelled (by either path above), they need to place a new order.
+
 ---
 
 ## 5. Quotations

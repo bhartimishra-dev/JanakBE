@@ -6,6 +6,7 @@ export enum NotificationType {
   PAYMENT_BALANCE = 'payment_balance',
   ORDER_STATUS = 'order_status',
   PAYMENT_CONFIRMED = 'payment_confirmed',
+  PAYMENT_FAILED = 'payment_failed',
 }
 
 @Entity('notifications')
