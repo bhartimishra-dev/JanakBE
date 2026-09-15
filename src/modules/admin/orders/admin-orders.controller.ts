@@ -115,7 +115,7 @@ export class AdminOrdersController {
   @Get(':id')
   @ApiOperation({ summary: 'Get order detail by UUID or orderId (e.g. JP-2026-00001)' })
   findOne(@Param('id') id: string) {
-    return this.adminOrdersService.findOne(id);
+    return this.adminOrdersService.findOneWithCustomerName(id);
   }
 
   @Get(':id/invoice')

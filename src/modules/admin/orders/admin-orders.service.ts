@@ -221,6 +221,26 @@ export class AdminOrdersService {
   }
 
   /**
+   * Same as findOne(), but also resolves customerName/customerContact
+   * (CompanyProfile.companyName with an email fallback — User has no name
+   * field) — the list endpoint (toListItem) already does this; the single-
+   * order detail endpoint didn't, so it returned no customer name at all
+   * instead of falling back to the email like everywhere else does.
+   */
+  async findOneWithCustomerName(id: string) {
+    const order = await this.findOne(id);
+    const profiles = await this.getCompanyProfilesFor(order.user?.id ? [order.user.id] : []);
+    const profile = order.user ? profiles.get(order.user.id) : undefined;
+    const addr = order.shippingAddress ?? ({} as Record<string, string>);
+
+    return {
+      ...order,
+      customerName: profile?.companyName ?? order.user?.email ?? 'Unknown',
+      customerContact: profile?.phone ?? addr['phone'] ?? addr['mobile'] ?? '',
+    };
+  }
+
+  /**
    * Excel export of orders — same filters as findAll() (tab/search/status/date
    * range), but unpaginated: every matching row goes into the sheet.
    */
@@ -403,7 +423,7 @@ export class AdminOrdersService {
       });
       await this.trackingRepository.save(order.tracking);
     }
-    return this.findOne(id);
+    return this.findOneWithCustomerName(id);
   }
 
   async updateTracking(id: string, data: { courierName?: string; awbNumber?: string; trackingUrl?: string }) {
@@ -411,7 +431,7 @@ export class AdminOrdersService {
     if (!order.tracking) throw new NotFoundException('Tracking record not found');
     Object.assign(order.tracking, data);
     await this.trackingRepository.save(order.tracking);
-    return this.findOne(id);
+    return this.findOneWithCustomerName(id);
   }
 
   async confirmNeftAdvance(orderId: string, neftRef: string, adminUser: User) {
@@ -431,7 +451,7 @@ export class AdminOrdersService {
       });
     }
 
-    return this.findOne(orderId);
+    return this.findOneWithCustomerName(orderId);
   }
 
   async confirmNeftBalance(orderId: string, neftRef: string, adminUser: User) {
@@ -451,7 +471,7 @@ export class AdminOrdersService {
       });
     }
 
-    return this.findOne(orderId);
+    return this.findOneWithCustomerName(orderId);
   }
 
   async assignForShipping(id: string, dto: { courierName?: string; awbNumber?: string; trackingUrl?: string }) {
@@ -492,6 +512,6 @@ export class AdminOrdersService {
       });
     }
 
-    return this.findOne(id);
+    return this.findOneWithCustomerName(id);
   }
 }
