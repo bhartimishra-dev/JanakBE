@@ -19,10 +19,7 @@ import { LocalStrategy } from './strategies/local.strategy';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('jwt.secret'),
-        // @nestjs/jwt types expiresIn as `StringValue` (from the `ms` package)
-        // rather than a plain string — cast since this is just an env value
-        // like '7d' that ms already parses correctly at runtime.
-        signOptions: { expiresIn: config.get<string>('jwt.expiresIn') as any },
+        signOptions: {},
       }),
     }),
     CartModule,
