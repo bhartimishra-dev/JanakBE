@@ -10,6 +10,9 @@ import { Repository } from 'typeorm';
 import { PaymentStage, PaymentStatus } from '../../common/enums/payment-method.enum';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { User } from '../users/entities/user.entity';
+import { Cart } from '../cart/entities/cart.entity';
+import { CartItem } from '../cart/entities/cart-item.entity';
+import { Coupon } from '../coupons/entities/coupon.entity';
 import { Order } from '../orders/entities/order.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
@@ -26,10 +29,38 @@ export class PaymentsService {
     private txnRepository: Repository<PaymentTransaction>,
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
+    @InjectRepository(Cart)
+    private cartRepository: Repository<Cart>,
+    @InjectRepository(CartItem)
+    private cartItemRepository: Repository<CartItem>,
+    @InjectRepository(Coupon)
+    private couponRepository: Repository<Coupon>,
     private iciciService: IciciPaymentService,
     private configService: ConfigService,
     private notificationsService: NotificationsService,
   ) {}
+
+  /**
+   * Consumes the cart and the coupon used for this order — deliberately not
+   * done at order-placement time (see checkout.service.ts) so a pending,
+   * failed, or cancelled payment leaves the customer's cart exactly as it
+   * was, instead of empty with nothing to show for it. Called only once the
+   * advance payment has actually succeeded (gateway callback or NEFT
+   * confirmation), which is the point the reservation actually "sticks."
+   */
+  private async finalizeOrderPayment(order: Order): Promise<void> {
+    if (!order.user) return;
+
+    const cart = await this.cartRepository.findOne({ where: { user: { id: order.user.id } } });
+    if (cart) {
+      await this.cartItemRepository.delete({ cart: { id: cart.id } });
+      await this.cartRepository.update(cart.id, { coupon: null });
+    }
+
+    if (order.couponCode) {
+      await this.couponRepository.update({ code: order.couponCode }, { isActive: false });
+    }
+  }
 
   async initiatePayment(user: User, dto: InitiatePaymentDto) {
     const order = await this.orderRepository.findOne({
@@ -129,6 +160,8 @@ export class PaymentsService {
         transactionId: payload.txnID,
       });
 
+      await this.finalizeOrderPayment(txn.order);
+
       if (txn.order.user) {
         await this.notificationsService.create(txn.order.user, {
           title: 'Advance Payment Received',
@@ -154,55 +187,9 @@ export class PaymentsService {
     return { success: isSuccess, redirectUrl };
   }
 
-  async confirmNeftAdvance(orderId: string, neftRef: string, adminUser: User) {
-    const order = await this.orderRepository.findOne({
-      where: { id: orderId },
-      relations: { user: true },
-    });
-    if (!order) throw new NotFoundException('Order not found');
-
-    order.advancePaid = true;
-    order.neftReferenceNumber = neftRef;
-    order.status = OrderStatus.ADVANCE_PAID;
-    await this.orderRepository.save(order);
-
-    if (order.user) {
-      await this.notificationsService.create(order.user, {
-        title: 'Advance Payment Confirmed',
-        message: `Your NEFT advance payment of ₹${Number(order.advanceAmount).toFixed(2)} for order ${order.orderId} has been confirmed. UTR: ${neftRef}`,
-        type: NotificationType.PAYMENT_CONFIRMED,
-        orderId: order.orderId,
-        metadata: { amount: order.advanceAmount, neftReferenceNumber: neftRef },
-      });
-    }
-
-    return order;
-  }
-
-  async confirmNeftBalance(orderId: string, neftRef: string, adminUser: User) {
-    const order = await this.orderRepository.findOne({
-      where: { id: orderId },
-      relations: { user: true },
-    });
-    if (!order) throw new NotFoundException('Order not found');
-
-    order.balancePaid = true;
-    order.balanceNeftReferenceNumber = neftRef;
-    order.status = OrderStatus.BALANCE_PAID;
-    await this.orderRepository.save(order);
-
-    if (order.user) {
-      await this.notificationsService.create(order.user, {
-        title: 'Balance Payment Confirmed',
-        message: `Your balance payment of ₹${Number(order.balanceAmount).toFixed(2)} for order ${order.orderId} has been confirmed. UTR: ${neftRef}. Your order will be shipped soon.`,
-        type: NotificationType.PAYMENT_CONFIRMED,
-        orderId: order.orderId,
-        metadata: { amount: order.balanceAmount, balanceNeftReferenceNumber: neftRef },
-      });
-    }
-
-    return order;
-  }
+  // NB: NEFT advance/balance confirmation is handled by AdminOrdersService
+  // (PATCH /admin/orders/:id/confirm-advance-neft / confirm-balance-neft) —
+  // this class doesn't need its own copies of that logic.
 
   async checkStatus(merchantTxnNo: string, user: User) {
     const txn = await this.txnRepository.findOne({

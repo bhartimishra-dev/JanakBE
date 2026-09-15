@@ -421,7 +421,12 @@ Two separate mechanisms, both landing the order on `cancelled` — previously **
 - **Gateway reports failure**: as soon as the ICICI callback (`POST /payments/callback`) or a status poll (`GET /payments/status/:merchantTxnNo`) reports the advance payment failed, the order is immediately marked `cancelled` and the customer gets a "Payment Failed — Order Cancelled" notification. Guarded so a stale/duplicate/out-of-order callback (a known payment-gateway hazard) can never cancel an order a *later* retry already paid for — it only acts while the order is still `pending_advance_payment`.
 - **Customer never attempts payment at all**: an hourly job (`OrderCleanupService`, `@nestjs/schedule`) auto-cancels any order still sitting at `pending_advance_payment` past `ORDER_ABANDON_TIMEOUT_HOURS` (env var, default `24`), notifying the customer the same way.
 
-**By design, the cart is *not* restored/preserved for either case** — the order itself is the reservation, not the cart (which is already cleared at `place-order` time, before payment is even attempted). A customer whose payment fails can retry immediately by calling `POST /payments/initiate` again with the same `orderId` — *while* it's still `pending_advance_payment`; once cancelled (by either path above), they need to place a new order.
+**The cart is no longer cleared at `place-order` time.** It used to be — meaning a pending, failed, or cancelled payment left the customer with an empty cart and nothing to show for it. Now:
+- `POST /checkout/place-order` creates the order (and snapshots the cart's items into it) but leaves the cart — including any applied coupon — completely untouched.
+- The cart's items are only deleted, and its coupon only deactivated, once the advance payment **actually succeeds** — `PaymentsService.finalizeOrderPayment()` (ICICI success callback) or the equivalent in `AdminOrdersService.confirmNeftAdvance()` (admin-confirmed NEFT advance). Both do the same thing: delete the user's cart items, clear the cart's `coupon`, and set `Coupon.isActive = false` for whatever code was used on that order.
+- If the payment fails or the order gets auto-cancelled instead, **none of that runs** — the cart, its items, and its applied coupon are exactly as they were before checkout, and the coupon is still usable. The customer can retry with a fresh order using the same cart, or apply a different coupon, without re-adding anything.
+
+Verified live: placed an order, confirmed the cart still had its item; confirmed the advance payment (NEFT) and confirmed the cart emptied; separately, applied a coupon, placed another order, failed *that* payment, and confirmed the coupon was still active and the cart still showed the item with the coupon applied.
 
 ---
 

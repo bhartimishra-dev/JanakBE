@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Address } from '../addresses/entities/address.entity';
 import { Brand } from '../brands/entities/brand.entity';
 import { Cart } from '../cart/entities/cart.entity';
+import { CartItem } from '../cart/entities/cart-item.entity';
 import { Category } from '../categories/entities/category.entity';
 import { CompanyProfile } from '../company-profile/entities/company-profile.entity';
 import { Coupon } from '../coupons/entities/coupon.entity';
@@ -44,7 +45,7 @@ import { AdminBrandsService } from './brands/admin-brands.service';
       Order, OrderItem, OrderTracking,
       Quote, QuoteItem,
       Coupon,
-      User, ApiLog, Cart,
+      User, ApiLog, Cart, CartItem,
       CompanyProfile, Address,
     ]),
     NotificationsModule,

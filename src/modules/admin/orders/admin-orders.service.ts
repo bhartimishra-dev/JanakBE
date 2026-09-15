@@ -11,7 +11,10 @@ import {
   readInvoiceFile,
   saveInvoiceFile,
 } from '../../../common/utils/invoice-storage.util';
+import { Cart } from '../../cart/entities/cart.entity';
+import { CartItem } from '../../cart/entities/cart-item.entity';
 import { CompanyProfile } from '../../company-profile/entities/company-profile.entity';
+import { Coupon } from '../../coupons/entities/coupon.entity';
 import { OrderTracking } from '../../orders/entities/order-tracking.entity';
 import { Order } from '../../orders/entities/order.entity';
 import { User } from '../../users/entities/user.entity';
@@ -81,9 +84,38 @@ export class AdminOrdersService {
     private trackingRepository: Repository<OrderTracking>,
     @InjectRepository(CompanyProfile)
     private companyProfileRepository: Repository<CompanyProfile>,
+    @InjectRepository(Cart)
+    private cartRepository: Repository<Cart>,
+    @InjectRepository(CartItem)
+    private cartItemRepository: Repository<CartItem>,
+    @InjectRepository(Coupon)
+    private couponRepository: Repository<Coupon>,
     private notificationsService: NotificationsService,
     private configService: ConfigService,
   ) {}
+
+  /**
+   * Consumes the cart and the coupon used for this order — not done at
+   * order-placement time (see checkout.service.ts) so a pending, failed, or
+   * cancelled payment leaves the customer's cart exactly as it was, instead
+   * of empty with nothing to show for it. Called only once the advance
+   * payment has actually succeeded — mirrors
+   * PaymentsService.finalizeOrderPayment() (the ICICI-gateway success path);
+   * this one covers the admin-confirmed NEFT advance path.
+   */
+  private async finalizeOrderPayment(order: Order): Promise<void> {
+    if (!order.user) return;
+
+    const cart = await this.cartRepository.findOne({ where: { user: { id: order.user.id } } });
+    if (cart) {
+      await this.cartItemRepository.delete({ cart: { id: cart.id } });
+      await this.cartRepository.update(cart.id, { coupon: null });
+    }
+
+    if (order.couponCode) {
+      await this.couponRepository.update({ code: order.couponCode }, { isActive: false });
+    }
+  }
 
   private async getTabCounts(): Promise<{ ongoing: number; completed: number }> {
     const [ongoing, completed] = await Promise.all([
@@ -440,6 +472,7 @@ export class AdminOrdersService {
     order.neftReferenceNumber = neftRef;
     order.status = OrderStatus.ADVANCE_PAID;
     await this.ordersRepository.save(order);
+    await this.finalizeOrderPayment(order);
 
     if (order.user) {
       await this.notificationsService.create(order.user, {

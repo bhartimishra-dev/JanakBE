@@ -179,12 +179,14 @@ export class CheckoutService {
       });
       await manager.save(tracking);
 
-      await manager.delete('cart_items', { cart: { id: cart.id } });
-      await manager.update(Cart, { id: cart.id }, { coupon: null });
-
-      if (coupon) {
-        await manager.update(Coupon, { id: coupon.id }, { isActive: false });
-      }
+      // Cart items, the cart's applied coupon, and the coupon's isActive flag
+      // are deliberately NOT touched here — the order isn't actually paid for
+      // yet at this point (advance payment happens as a separate step right
+      // after this). Clearing them now meant a failed/pending/cancelled
+      // payment left the customer with an empty cart and nothing to show for
+      // it. They're only consumed once the advance payment actually succeeds
+      // — see PaymentsService.finalizeOrderPayment(), called from the ICICI
+      // success callback and from confirmNeftAdvance().
 
       // manager.save(order) above doesn't populate the relation back onto
       // the entity — attach it in memory so the invoice can be rendered
