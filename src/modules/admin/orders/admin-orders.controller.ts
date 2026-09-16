@@ -47,6 +47,7 @@ export class AdminOrdersController {
   @ApiQuery({ name: 'from', required: false, description: 'Start date (YYYY-MM-DD)' })
   @ApiQuery({ name: 'to', required: false, description: 'End date (YYYY-MM-DD)' })
   @ApiQuery({ name: 'status', enum: OrderStatus, required: false, description: 'Filter by specific status' })
+  @ApiQuery({ name: 'paymentStatus', enum: OrderStatus, required: false, description: 'Alias for `status` — accepted because the admin frontend sends this name' })
   findAll(
     @Query('tab') tab: 'ongoing' | 'completed' = 'ongoing',
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -55,8 +56,9 @@ export class AdminOrdersController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('status') status?: OrderStatus,
+    @Query('paymentStatus') paymentStatus?: OrderStatus,
   ) {
-    return this.adminOrdersService.findAll(tab, page, limit, search, from, to, status);
+    return this.adminOrdersService.findAll(tab, page, limit, search, from, to, status ?? paymentStatus);
   }
 
   @Get('export/excel')
@@ -76,8 +78,9 @@ export class AdminOrdersController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('status') status?: OrderStatus,
+    @Query('paymentStatus') paymentStatus?: OrderStatus,
   ) {
-    const buffer = await this.adminOrdersService.exportExcel(tab, search, from, to, status);
+    const buffer = await this.adminOrdersService.exportExcel(tab, search, from, to, status ?? paymentStatus);
     const stamp = new Date().toISOString().slice(0, 10);
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -102,8 +105,9 @@ export class AdminOrdersController {
     @Query('to') to?: string,
     @Query('tab') tab: 'ongoing' | 'completed' = 'ongoing',
     @Query('status') status?: OrderStatus,
+    @Query('paymentStatus') paymentStatus?: OrderStatus,
   ) {
-    const buffer = await this.adminOrdersService.exportInvoicesExcel(from, to, tab, status);
+    const buffer = await this.adminOrdersService.exportInvoicesExcel(from, to, tab, status ?? paymentStatus);
     const stamp = new Date().toISOString().slice(0, 10);
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
