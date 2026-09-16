@@ -468,16 +468,24 @@ export class AdminOrdersService {
 
   async confirmNeftAdvance(orderId: string, neftRef: string, adminUser: User) {
     const order = await this.findOne(orderId);
+    // Small orders where the advance alone covers 100% (balanceAmount: 0)
+    // have no NEFT balance step to ever trigger — without this, they'd sit
+    // at advance_paid forever despite being fully paid, indistinguishable by
+    // status from an order that genuinely still owes a balance.
+    const isFullyPaid = Number(order.balanceAmount) === 0;
     order.advancePaid = true;
     order.neftReferenceNumber = neftRef;
-    order.status = OrderStatus.ADVANCE_PAID;
+    order.status = isFullyPaid ? OrderStatus.BALANCE_PAID : OrderStatus.ADVANCE_PAID;
+    if (isFullyPaid) order.balancePaid = true;
     await this.ordersRepository.save(order);
     await this.finalizeOrderPayment(order);
 
     if (order.user) {
       await this.notificationsService.create(order.user, {
-        title: 'Advance Payment Confirmed',
-        message: `Your NEFT advance payment of ₹${Number(order.advanceAmount).toFixed(2)} for order ${order.orderId} has been confirmed. UTR: ${neftRef}`,
+        title: isFullyPaid ? 'Payment Confirmed — Order Fully Paid' : 'Advance Payment Confirmed',
+        message: isFullyPaid
+          ? `Your NEFT payment of ₹${Number(order.advanceAmount).toFixed(2)} for order ${order.orderId} has been confirmed in full. UTR: ${neftRef}`
+          : `Your NEFT advance payment of ₹${Number(order.advanceAmount).toFixed(2)} for order ${order.orderId} has been confirmed. UTR: ${neftRef}`,
         type: NotificationType.PAYMENT_CONFIRMED,
         orderId: order.orderId,
         metadata: { amount: order.advanceAmount, neftReferenceNumber: neftRef },

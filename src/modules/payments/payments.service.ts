@@ -154,9 +154,15 @@ export class PaymentsService {
     await this.txnRepository.save(txn);
 
     if (isSuccess) {
+      // Small orders where the advance alone covers 100% (balanceAmount: 0)
+      // have no NEFT balance step to ever trigger — without this, they'd
+      // sit at advance_paid forever despite being fully paid, indistinguishable
+      // by status from an order that genuinely still owes a balance.
+      const isFullyPaid = Number(txn.order.balanceAmount) === 0;
       await this.orderRepository.update(txn.order.id, {
-        status: OrderStatus.ADVANCE_PAID,
+        status: isFullyPaid ? OrderStatus.BALANCE_PAID : OrderStatus.ADVANCE_PAID,
         advancePaid: true,
+        ...(isFullyPaid ? { balancePaid: true } : {}),
         transactionId: payload.txnID,
       });
 
@@ -164,8 +170,10 @@ export class PaymentsService {
 
       if (txn.order.user) {
         await this.notificationsService.create(txn.order.user, {
-          title: 'Advance Payment Received',
-          message: `Advance payment of ₹${Number(txn.amount).toFixed(2)} received for order ${txn.order.orderId}. Your order is confirmed.`,
+          title: isFullyPaid ? 'Payment Received — Order Fully Paid' : 'Advance Payment Received',
+          message: isFullyPaid
+            ? `Payment of ₹${Number(txn.amount).toFixed(2)} received in full for order ${txn.order.orderId}. Your order is confirmed.`
+            : `Advance payment of ₹${Number(txn.amount).toFixed(2)} received for order ${txn.order.orderId}. Your order is confirmed.`,
           type: NotificationType.PAYMENT_CONFIRMED,
           orderId: txn.order.orderId,
           metadata: { amount: txn.amount, transactionId: payload.txnID },
