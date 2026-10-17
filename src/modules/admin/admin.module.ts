@@ -19,6 +19,7 @@ import { ProductSpec } from '../products/entities/product-spec.entity';
 import { Product } from '../products/entities/product.entity';
 import { User } from '../users/entities/user.entity';
 import { ApiLog } from '../api-logs/entities/api-log.entity';
+import { ContactEnquiry } from '../contact/entities/contact-enquiry.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AdminCouponsController } from './coupons/admin-coupons.controller';
 import { AdminCouponsService } from './coupons/admin-coupons.service';
@@ -36,6 +37,8 @@ import { AdminQuotesController } from './quotes/admin-quotes.controller';
 import { AdminQuotesService } from './quotes/admin-quotes.service';
 import { AdminBrandsController } from './brands/admin-brands.controller';
 import { AdminBrandsService } from './brands/admin-brands.service';
+import { AdminContactEnquiriesController } from './contact-enquiries/admin-contact-enquiries.controller';
+import { AdminContactEnquiriesService } from './contact-enquiries/admin-contact-enquiries.service';
 
 @Module({
   imports: [
@@ -47,6 +50,7 @@ import { AdminBrandsService } from './brands/admin-brands.service';
       Coupon,
       User, ApiLog, Cart, CartItem,
       CompanyProfile, Address,
+      ContactEnquiry,
     ]),
     NotificationsModule,
   ],
@@ -59,6 +63,7 @@ import { AdminBrandsService } from './brands/admin-brands.service';
     AdminCategoriesController,
     AdminQuotesController,
     AdminBrandsController,
+    AdminContactEnquiriesController,
   ],
   providers: [
     AdminDashboardService,
@@ -69,6 +74,7 @@ import { AdminBrandsService } from './brands/admin-brands.service';
     AdminCategoriesService,
     AdminQuotesService,
     AdminBrandsService,
+    AdminContactEnquiriesService,
   ],
 })
 export class AdminModule {}

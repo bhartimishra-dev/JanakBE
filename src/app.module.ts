@@ -26,6 +26,7 @@ import { WishlistModule } from './modules/wishlist/wishlist.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { ApiLogsModule } from './modules/api-logs/api-logs.module';
 import { CompanyProfileModule } from './modules/company-profile/company-profile.module';
+import { ContactModule } from './modules/contact/contact.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { RedisModule } from './common/services/redis.module';
@@ -75,6 +76,7 @@ import { RedisModule } from './common/services/redis.module';
     PaymentsModule,
     NotificationsModule,
     CompanyProfileModule,
+    ContactModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
