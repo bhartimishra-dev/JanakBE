@@ -20,6 +20,9 @@ export class ContactService {
       message: dto.message.trim(),
     });
     await this.enquiriesRepository.save(enquiry);
-    return { message: 'Thank you for reaching out. Our team will get back to you shortly.' };
+    return {
+      message:
+        'Thank you for reaching out. Our team will get back to you shortly.',
+    };
   }
 }

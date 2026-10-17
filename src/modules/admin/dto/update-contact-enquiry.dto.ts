@@ -8,7 +8,9 @@ export class UpdateContactEnquiryDto {
   @IsEnum(ContactEnquiryStatus)
   status?: ContactEnquiryStatus;
 
-  @ApiPropertyOptional({ description: 'Internal notes, not shown to the customer' })
+  @ApiPropertyOptional({
+    description: 'Internal notes, not shown to the customer',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(5000)

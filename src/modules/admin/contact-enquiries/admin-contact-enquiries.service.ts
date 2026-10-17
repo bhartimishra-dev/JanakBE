@@ -29,7 +29,9 @@ export class AdminContactEnquiriesService {
     from?: string,
     to?: string,
   ): Promise<PaginatedContactEnquiries> {
-    const qb = this.enquiriesRepository.createQueryBuilder('e').orderBy('e.createdAt', 'DESC');
+    const qb = this.enquiriesRepository
+      .createQueryBuilder('e')
+      .orderBy('e.createdAt', 'DESC');
 
     if (status) qb.andWhere('e.status = :status', { status });
 
@@ -66,7 +68,9 @@ export class AdminContactEnquiriesService {
     };
   }
 
-  private async getStatusCounts(): Promise<Record<ContactEnquiryStatus, number>> {
+  private async getStatusCounts(): Promise<
+    Record<ContactEnquiryStatus, number>
+  > {
     const rows = await this.enquiriesRepository
       .createQueryBuilder('e')
       .select('e.status', 'status')

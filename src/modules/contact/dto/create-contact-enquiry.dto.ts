@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateContactEnquiryDto {
   @ApiProperty({ example: 'Rahul Sharma' })
@@ -23,7 +30,9 @@ export class CreateContactEnquiryDto {
   @MaxLength(200)
   subject?: string;
 
-  @ApiProperty({ example: 'I would like pricing for 5 units of the R12i receiver.' })
+  @ApiProperty({
+    example: 'I would like pricing for 5 units of the R12i receiver.',
+  })
   @IsString()
   @IsNotEmpty()
   @MaxLength(5000)

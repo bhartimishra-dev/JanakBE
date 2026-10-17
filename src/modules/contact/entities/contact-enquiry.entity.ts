@@ -1,4 +1,10 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { ContactEnquiryStatus } from '../../../common/enums/contact-enquiry-status.enum';
 
 @Entity('contact_enquiries')
@@ -21,7 +27,11 @@ export class ContactEnquiry {
   @Column({ type: 'text' })
   message: string;
 
-  @Column({ type: 'enum', enum: ContactEnquiryStatus, default: ContactEnquiryStatus.NEW })
+  @Column({
+    type: 'enum',
+    enum: ContactEnquiryStatus,
+    default: ContactEnquiryStatus.NEW,
+  })
   status: ContactEnquiryStatus;
 
   /** Internal notes from the admin team — never shown to the customer. */
