@@ -32,11 +32,15 @@ export class AuthService {
   async register(dto: RegisterDto) {
     const existing = await this.usersRepository.findOne({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Email already in use');
+    if (await this.usersRepository.exists({ where: { phone: dto.phone } })) {
+      throw new ConflictException('Phone number already in use');
+    }
 
     const hashed = await bcrypt.hash(dto.password, 10);
     const user = this.usersRepository.create({
       email: dto.email,
       password: hashed,
+      phone: dto.phone,
       role: UserRole.CUSTOMER,
     });
     await this.usersRepository.save(user);
@@ -48,7 +52,7 @@ export class AuthService {
   async validateUser(email: string, password: string): Promise<User | null> {
     const user = await this.usersRepository.findOne({
       where: { email },
-      select: { id: true, email: true, password: true, role: true, isActive: true },
+      select: { id: true, email: true, phone: true, password: true, role: true, isActive: true },
     });
     if (!user || !user.isActive) return null;
     const isMatch = await bcrypt.compare(password, user.password);
@@ -72,6 +76,7 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
+        phone: user.phone,
         role: user.role,
       },
     };
@@ -126,6 +131,7 @@ export class AuthService {
     return {
       id: user.id,
       email: user.email,
+      phone: user.phone,
       role: user.role,
     };
   }

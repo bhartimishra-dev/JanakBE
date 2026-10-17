@@ -19,6 +19,10 @@ export class User {
   @Column({ select: false })
   password: string;
 
+  // 10-digit mobile collected at signup. Nullable for accounts created before phone was required.
+  @Column({ type: 'varchar', length: 10, unique: true, nullable: true })
+  phone: string | null;
+
   @Column({ type: 'enum', enum: UserRole, default: UserRole.CUSTOMER })
   role: UserRole;
 
