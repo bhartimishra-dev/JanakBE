@@ -27,6 +27,7 @@ import { AddressesModule } from './modules/addresses/addresses.module';
 import { ApiLogsModule } from './modules/api-logs/api-logs.module';
 import { CompanyProfileModule } from './modules/company-profile/company-profile.module';
 import { ContactModule } from './modules/contact/contact.module';
+import { SalesRepEnquiriesModule } from './modules/sales-rep-enquiries/sales-rep-enquiries.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { RedisModule } from './common/services/redis.module';
@@ -77,6 +78,7 @@ import { RedisModule } from './common/services/redis.module';
     NotificationsModule,
     CompanyProfileModule,
     ContactModule,
+    SalesRepEnquiriesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
